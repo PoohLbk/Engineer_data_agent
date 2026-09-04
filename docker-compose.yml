@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  ollama-engine:
+    image: ollama/ollama:latest
+    container_name: enterprise_ollama_engine
+    volumes:
+      - ollama_storage:/root/.ollama
+    ports:
+      - "11434:11434"
+    restart: always
+
+  data-agent-app:
+    build: .
+    container_name: enterprise_data_agent_app
+    ports:
+      - "8501:8501"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama-engine:11434
+      - MODEL_NAME=qwen2.5-coder:7b
+      - DATA_FOLDER=./data_input
+    volumes:
+      - ./data_input:/app/data_input
+    depends_on:
+      - ollama-engine
+    restart: always
+
+volumes:
+  ollama_storage:
