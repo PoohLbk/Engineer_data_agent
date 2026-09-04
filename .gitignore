@@ -1,0 +1,18 @@
+# Sensitive Data & Local Drives
+data_input/
+data_storage/
+*.csv
+*.parquet
+*.json
+*.db
+*.sqlite
+
+# Environment & Secrets
+.env
+*.key
+*.pem
+
+# Python System Files
+__pycache__/
+*.pyc
+.venv/
