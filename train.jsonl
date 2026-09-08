@@ -1,0 +1,5 @@
+{
+  "instruction": "You are a SQL expert. Write a DuckDB SQL query based on the schema and Thai question.",
+  "input": "Schema:\nTable: customers (customer_id, customer_city, customer_state)\n\nQuestion: มีลูกค้าทั้งหมดกี่คนในตาราง customers",
+  "output": "SELECT COUNT(*) AS total_customers FROM customers;"
+}
