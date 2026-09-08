@@ -1,1 +1,1052 @@
-
+[
+  {
+    "id": 1,
+    "difficulty": "easy",
+    "question_th": "มีลูกค้าทั้งหมดกี่คนในตาราง customers",
+    "sql": "SELECT COUNT(*) AS total_customers FROM customers;",
+    "verified": true
+  },
+  {
+    "id": 2,
+    "difficulty": "easy",
+    "question_th": "มีคำสั่งซื้อ (order) ทั้งหมดกี่รายการ",
+    "sql": "SELECT COUNT(*) AS total_orders FROM orders;",
+    "verified": true
+  },
+  {
+    "id": 3,
+    "difficulty": "easy",
+    "question_th": "มีสินค้าทั้งหมดกี่รายการในตาราง products",
+    "sql": "SELECT COUNT(*) AS total_products FROM products;",
+    "verified": true
+  },
+  {
+    "id": 4,
+    "difficulty": "easy",
+    "question_th": "มีผู้ขาย (seller) ทั้งหมดกี่ราย",
+    "sql": "SELECT COUNT(*) AS total_sellers FROM sellers;",
+    "verified": true
+  },
+  {
+    "id": 5,
+    "difficulty": "easy",
+    "question_th": "คำสั่งซื้อมีสถานะ (order_status) ที่แตกต่างกันกี่แบบ อะไรบ้าง",
+    "sql": "SELECT DISTINCT order_status FROM orders;",
+    "verified": true
+  },
+  {
+    "id": 6,
+    "difficulty": "easy",
+    "question_th": "รัฐ (state) ของลูกค้ามีทั้งหมดกี่รัฐที่ไม่ซ้ำกัน",
+    "sql": "SELECT COUNT(DISTINCT customer_state) AS num_states FROM customers;",
+    "verified": true
+  },
+  {
+    "id": 7,
+    "difficulty": "easy",
+    "question_th": "มีหมวดหมู่สินค้า (product_category_name) ที่ไม่ซ้ำกันทั้งหมดกี่หมวด",
+    "sql": "SELECT COUNT(DISTINCT product_category_name) AS num_categories FROM products;",
+    "verified": true
+  },
+  {
+    "id": 8,
+    "difficulty": "easy",
+    "question_th": "แสดงชื่อเมืองของลูกค้า (customer_city) แบบไม่ซ้ำ 10 เมืองแรกตามลำดับตัวอักษร",
+    "sql": "SELECT DISTINCT customer_city FROM customers ORDER BY customer_city ASC LIMIT 10;",
+    "verified": true
+  },
+  {
+    "id": 9,
+    "difficulty": "easy",
+    "question_th": "คำสั่งซื้อที่มีสถานะ 'delivered' มีทั้งหมดกี่รายการ",
+    "sql": "SELECT COUNT(*) AS delivered_orders FROM orders WHERE order_status = 'delivered';",
+    "verified": true
+  },
+  {
+    "id": 10,
+    "difficulty": "easy",
+    "question_th": "คำสั่งซื้อที่มีสถานะ 'canceled' มีทั้งหมดกี่รายการ",
+    "sql": "SELECT COUNT(*) AS canceled_orders FROM orders WHERE order_status = 'canceled';",
+    "verified": true
+  },
+  {
+    "id": 11,
+    "difficulty": "easy",
+    "question_th": "แสดง order_id และ order_status ของคำสั่งซื้อ 5 รายการแรก",
+    "sql": "SELECT order_id, order_status FROM orders LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 12,
+    "difficulty": "easy",
+    "question_th": "ราคาสินค้า (price) สูงสุดในตาราง order_items คือเท่าไร",
+    "sql": "SELECT MAX(price) AS max_price FROM order_items;",
+    "verified": true
+  },
+  {
+    "id": 13,
+    "difficulty": "easy",
+    "question_th": "ราคาสินค้า (price) ต่ำสุดในตาราง order_items คือเท่าไร",
+    "sql": "SELECT MIN(price) AS min_price FROM order_items;",
+    "verified": true
+  },
+  {
+    "id": 14,
+    "difficulty": "easy",
+    "question_th": "ราคาสินค้าเฉลี่ย (average price) ในตาราง order_items คือเท่าไร",
+    "sql": "SELECT AVG(price) AS avg_price FROM order_items;",
+    "verified": true
+  },
+  {
+    "id": 15,
+    "difficulty": "easy",
+    "question_th": "ค่าขนส่ง (freight_value) รวมทั้งหมดในตาราง order_items คือเท่าไร",
+    "sql": "SELECT SUM(freight_value) AS total_freight FROM order_items;",
+    "verified": true
+  },
+  {
+    "id": 16,
+    "difficulty": "easy",
+    "question_th": "มีรายวิธีการชำระเงิน (payment_type) แบบใดบ้างในตาราง order_payments",
+    "sql": "SELECT DISTINCT payment_type FROM order_payments;",
+    "verified": true
+  },
+  {
+    "id": 17,
+    "difficulty": "easy",
+    "question_th": "จำนวนงวดผ่อนชำระ (payment_installments) สูงสุดคือกี่งวด",
+    "sql": "SELECT MAX(payment_installments) AS max_installments FROM order_payments;",
+    "verified": true
+  },
+  {
+    "id": 18,
+    "difficulty": "easy",
+    "question_th": "คะแนนรีวิว (review_score) เฉลี่ยของทุกออเดอร์คือเท่าไร",
+    "sql": "SELECT AVG(review_score) AS avg_review_score FROM order_reviews;",
+    "verified": true
+  },
+  {
+    "id": 19,
+    "difficulty": "easy",
+    "question_th": "มีรีวิวที่ได้คะแนน 5 คะแนนกี่รายการ",
+    "sql": "SELECT COUNT(*) AS five_star_reviews FROM order_reviews WHERE review_score = 5;",
+    "verified": true
+  },
+  {
+    "id": 20,
+    "difficulty": "easy",
+    "question_th": "มีรีวิวที่ได้คะแนน 1 คะแนนกี่รายการ",
+    "sql": "SELECT COUNT(*) AS one_star_reviews FROM order_reviews WHERE review_score = 1;",
+    "verified": true
+  },
+  {
+    "id": 21,
+    "difficulty": "easy",
+    "question_th": "แสดงชื่อรัฐ (seller_state) ของผู้ขายแบบไม่ซ้ำทั้งหมด",
+    "sql": "SELECT DISTINCT seller_state FROM sellers;",
+    "verified": true
+  },
+  {
+    "id": 22,
+    "difficulty": "easy",
+    "question_th": "น้ำหนักสินค้า (product_weight_g) เฉลี่ยของสินค้าทั้งหมดคือเท่าไร (กรัม)",
+    "sql": "SELECT AVG(product_weight_g) AS avg_weight_g FROM products;",
+    "verified": true
+  },
+  {
+    "id": 23,
+    "difficulty": "easy",
+    "question_th": "สินค้าที่มีจำนวนรูปภาพ (product_photos_qty) มากกว่า 5 รูป มีกี่รายการ",
+    "sql": "SELECT COUNT(*) AS products_with_many_photos FROM products WHERE product_photos_qty > 5;",
+    "verified": true
+  },
+  {
+    "id": 24,
+    "difficulty": "easy",
+    "question_th": "ลูกค้าที่อยู่ในรัฐ 'SP' มีทั้งหมดกี่คน",
+    "sql": "SELECT COUNT(*) AS customers_in_sp FROM customers WHERE customer_state = 'SP';",
+    "verified": true
+  },
+  {
+    "id": 25,
+    "difficulty": "easy",
+    "question_th": "ผู้ขายที่อยู่ในเมือง 'sao paulo' มีทั้งหมดกี่ราย",
+    "sql": "SELECT COUNT(*) AS sellers_in_sp_city FROM sellers WHERE seller_city = 'sao paulo';",
+    "verified": true
+  },
+  {
+    "id": 26,
+    "difficulty": "easy",
+    "question_th": "คำสั่งซื้อที่ยังไม่มีวันที่จัดส่งถึงลูกค้า (order_delivered_customer_date เป็น NULL) มีกี่รายการ",
+    "sql": "SELECT COUNT(*) AS undelivered FROM orders WHERE order_delivered_customer_date IS NULL;",
+    "verified": true
+  },
+  {
+    "id": 27,
+    "difficulty": "easy",
+    "question_th": "แสดงคำแปลภาษาอังกฤษของหมวดหมู่ 'beleza_saude' คืออะไร",
+    "sql": "SELECT product_category_name_english FROM product_category_name_translation WHERE product_category_name = 'beleza_saude';",
+    "verified": true
+  },
+  {
+    "id": 28,
+    "difficulty": "easy",
+    "question_th": "จำนวนแถวทั้งหมดในตาราง geolocation มีกี่แถว",
+    "sql": "SELECT COUNT(*) AS total_rows FROM geolocation;",
+    "verified": true
+  },
+  {
+    "id": 29,
+    "difficulty": "easy",
+    "question_th": "แสดงค่า payment_value สูงสุดที่เคยจ่ายในคำสั่งซื้อเดียว",
+    "sql": "SELECT MAX(payment_value) AS max_payment FROM order_payments;",
+    "verified": true
+  },
+  {
+    "id": 30,
+    "difficulty": "easy",
+    "question_th": "มีการชำระเงินด้วยประเภท 'voucher' ทั้งหมดกี่รายการ",
+    "sql": "SELECT COUNT(*) AS voucher_payments FROM order_payments WHERE payment_type = 'voucher';",
+    "verified": true
+  },
+  {
+    "id": 31,
+    "difficulty": "easy",
+    "question_th": "แสดง order_id ของคำสั่งซื้อที่มี order_purchase_timestamp เร็วที่สุด (วันที่ซื้อแรกสุดในระบบ)",
+    "sql": "SELECT order_id, order_purchase_timestamp FROM orders ORDER BY order_purchase_timestamp ASC LIMIT 1;",
+    "verified": true
+  },
+  {
+    "id": 32,
+    "difficulty": "easy",
+    "question_th": "แสดง order_id ของคำสั่งซื้อที่มี order_purchase_timestamp ล่าสุด (วันที่ซื้อล่าสุดในระบบ)",
+    "sql": "SELECT order_id, order_purchase_timestamp FROM orders ORDER BY order_purchase_timestamp DESC LIMIT 1;",
+    "verified": true
+  },
+  {
+    "id": 33,
+    "difficulty": "easy",
+    "question_th": "สินค้าที่มีความยาว (product_length_cm) มากกว่า 100 เซนติเมตร มีกี่รายการ",
+    "sql": "SELECT COUNT(*) AS long_products FROM products WHERE product_length_cm > 100;",
+    "verified": true
+  },
+  {
+    "id": 34,
+    "difficulty": "easy",
+    "question_th": "แสดงจำนวนลูกค้าที่ไม่ซ้ำกัน (customer_unique_id) ทั้งหมด",
+    "sql": "SELECT COUNT(DISTINCT customer_unique_id) AS unique_customers FROM customers;",
+    "verified": true
+  },
+  {
+    "id": 35,
+    "difficulty": "easy",
+    "question_th": "มีคำสั่งซื้อที่ payment_installments เท่ากับ 1 (จ่ายครั้งเดียว) กี่รายการ",
+    "sql": "SELECT COUNT(*) AS single_installment FROM order_payments WHERE payment_installments = 1;",
+    "verified": true
+  },
+  {
+    "id": 36,
+    "difficulty": "easy",
+    "question_th": "แสดง 5 รหัสไปรษณีย์ (zip_code_prefix) ของลูกค้าที่มีตัวเลขน้อยที่สุด",
+    "sql": "SELECT DISTINCT customer_zip_code_prefix FROM customers ORDER BY customer_zip_code_prefix ASC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 37,
+    "difficulty": "easy",
+    "question_th": "มีรีวิวที่มีข้อความ (review_comment_message ไม่เป็น NULL) ทั้งหมดกี่รายการ",
+    "sql": "SELECT COUNT(*) AS reviews_with_message FROM order_reviews WHERE review_comment_message IS NOT NULL;",
+    "verified": true
+  },
+  {
+    "id": 38,
+    "difficulty": "easy",
+    "question_th": "มีรีวิวที่ไม่มีข้อความ (review_comment_message เป็น NULL) ทั้งหมดกี่รายการ",
+    "sql": "SELECT COUNT(*) AS reviews_without_message FROM order_reviews WHERE review_comment_message IS NULL;",
+    "verified": true
+  },
+  {
+    "id": 39,
+    "difficulty": "easy",
+    "question_th": "ความสูงสินค้า (product_height_cm) เฉลี่ยของสินค้าทั้งหมดคือเท่าไร",
+    "sql": "SELECT AVG(product_height_cm) AS avg_height FROM products;",
+    "verified": true
+  },
+  {
+    "id": 40,
+    "difficulty": "easy",
+    "question_th": "มี lead ที่ผ่านการติดต่อ (leads_qualified) ทั้งหมดกี่รายการ",
+    "sql": "SELECT COUNT(*) AS total_qualified_leads FROM leads_qualified;",
+    "verified": true
+  },
+  {
+    "id": 41,
+    "difficulty": "easy",
+    "question_th": "มี lead ที่ปิดการขายสำเร็จ (leads_closed) ทั้งหมดกี่รายการ",
+    "sql": "SELECT COUNT(*) AS total_closed_leads FROM leads_closed;",
+    "verified": true
+  },
+  {
+    "id": 42,
+    "difficulty": "easy",
+    "question_th": "แสดงแหล่งที่มา (origin) ของ lead แบบไม่ซ้ำทั้งหมด จากตาราง leads_qualified",
+    "sql": "SELECT DISTINCT origin FROM leads_qualified;",
+    "verified": true
+  },
+  {
+    "id": 43,
+    "difficulty": "easy",
+    "question_th": "แสดงประเภทธุรกิจ (business_type) ของผู้ขายที่ปิดการขายสำเร็จ แบบไม่ซ้ำ",
+    "sql": "SELECT DISTINCT business_type FROM leads_closed;",
+    "verified": true
+  },
+  {
+    "id": 44,
+    "difficulty": "easy",
+    "question_th": "คำสั่งซื้อที่มีสถานะ 'shipped' มีทั้งหมดกี่รายการ",
+    "sql": "SELECT COUNT(*) AS shipped_orders FROM orders WHERE order_status = 'shipped';",
+    "verified": true
+  },
+  {
+    "id": 45,
+    "difficulty": "easy",
+    "question_th": "มีการชำระเงินที่มีค่า payment_value เท่ากับ 0 กี่รายการ",
+    "sql": "SELECT COUNT(*) AS zero_payment FROM order_payments WHERE payment_value = 0;",
+    "verified": true
+  },
+  {
+    "id": 46,
+    "difficulty": "medium",
+    "question_th": "แต่ละสถานะคำสั่งซื้อ (order_status) มีจำนวนกี่รายการ เรียงจากมากไปน้อย",
+    "sql": "SELECT order_status, COUNT(*) AS num_orders FROM orders GROUP BY order_status ORDER BY num_orders DESC;",
+    "verified": true
+  },
+  {
+    "id": 47,
+    "difficulty": "medium",
+    "question_th": "5 รัฐ (state) ที่มีจำนวนลูกค้ามากที่สุด พร้อมจำนวนลูกค้า",
+    "sql": "SELECT customer_state, COUNT(*) AS num_customers FROM customers GROUP BY customer_state ORDER BY num_customers DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 48,
+    "difficulty": "medium",
+    "question_th": "5 เมืองที่มีจำนวนผู้ขายมากที่สุด พร้อมจำนวนผู้ขาย",
+    "sql": "SELECT seller_city, COUNT(*) AS num_sellers FROM sellers GROUP BY seller_city ORDER BY num_sellers DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 49,
+    "difficulty": "medium",
+    "question_th": "แต่ละวิธีการชำระเงิน (payment_type) มีมูลค่ารวม (payment_value) เท่าไร เรียงจากมากไปน้อย",
+    "sql": "SELECT payment_type, SUM(payment_value) AS total_value FROM order_payments GROUP BY payment_type ORDER BY total_value DESC;",
+    "verified": true
+  },
+  {
+    "id": 50,
+    "difficulty": "medium",
+    "question_th": "10 หมวดหมู่สินค้า (product_category_name) ที่มีจำนวนสินค้ามากที่สุด",
+    "sql": "SELECT product_category_name, COUNT(*) AS num_products FROM products WHERE product_category_name IS NOT NULL GROUP BY product_category_name ORDER BY num_products DESC LIMIT 10;",
+    "verified": true
+  },
+  {
+    "id": 51,
+    "difficulty": "medium",
+    "question_th": "คะแนนรีวิวเฉลี่ย (review_score) แยกตามคะแนน มีจำนวนรีวิวเท่าไรในแต่ละคะแนน",
+    "sql": "SELECT review_score, COUNT(*) AS num_reviews FROM order_reviews GROUP BY review_score ORDER BY review_score;",
+    "verified": true
+  },
+  {
+    "id": 52,
+    "difficulty": "medium",
+    "question_th": "ชื่อเมือง (customer_city) ของลูกค้าที่มีจำนวนคำสั่งซื้อมากที่สุด 5 อันดับแรก",
+    "sql": "SELECT c.customer_city, COUNT(*) AS num_orders FROM orders o JOIN customers c ON o.customer_id = c.customer_id GROUP BY c.customer_city ORDER BY num_orders DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 53,
+    "difficulty": "medium",
+    "question_th": "แต่ละรัฐของลูกค้ามีมูลค่าการชำระเงินรวม (payment_value) เท่าไร เรียงจากมากไปน้อย 10 อันดับแรก",
+    "sql": "SELECT c.customer_state, SUM(op.payment_value) AS total_payment FROM orders o JOIN customers c ON o.customer_id = c.customer_id JOIN order_payments op ON o.order_id = op.order_id GROUP BY c.customer_state ORDER BY total_payment DESC LIMIT 10;",
+    "verified": true
+  },
+  {
+    "id": 54,
+    "difficulty": "medium",
+    "question_th": "หมวดหมู่สินค้าภาษาอังกฤษ 10 หมวดที่มียอดขาย (price รวม) สูงที่สุด",
+    "sql": "SELECT t.product_category_name_english, SUM(oi.price) AS total_sales FROM order_items oi JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name GROUP BY t.product_category_name_english ORDER BY total_sales DESC LIMIT 10;",
+    "verified": true
+  },
+  {
+    "id": 55,
+    "difficulty": "medium",
+    "question_th": "ผู้ขาย 10 อันดับแรกที่มียอดขายรวม (price) สูงที่สุด พร้อม seller_id",
+    "sql": "SELECT seller_id, SUM(price) AS total_sales FROM order_items GROUP BY seller_id ORDER BY total_sales DESC LIMIT 10;",
+    "verified": true
+  },
+  {
+    "id": 56,
+    "difficulty": "medium",
+    "question_th": "ลูกค้า 10 อันดับแรก (customer_unique_id) ที่มีจำนวนคำสั่งซื้อมากที่สุด",
+    "sql": "SELECT c.customer_unique_id, COUNT(*) AS num_orders FROM orders o JOIN customers c ON o.customer_id = c.customer_id GROUP BY c.customer_unique_id ORDER BY num_orders DESC LIMIT 10;",
+    "verified": true
+  },
+  {
+    "id": 57,
+    "difficulty": "medium",
+    "question_th": "ในแต่ละปีที่มีการสั่งซื้อ (จาก order_purchase_timestamp) มีจำนวนคำสั่งซื้อกี่รายการ",
+    "sql": "SELECT strftime('%Y', order_purchase_timestamp) AS purchase_year, COUNT(*) AS num_orders FROM orders GROUP BY purchase_year ORDER BY purchase_year;",
+    "verified": true
+  },
+  {
+    "id": 58,
+    "difficulty": "medium",
+    "question_th": "ในแต่ละเดือนของปี 2018 มีจำนวนคำสั่งซื้อกี่รายการ",
+    "sql": "SELECT strftime('%m', order_purchase_timestamp) AS purchase_month, COUNT(*) AS num_orders FROM orders WHERE strftime('%Y', order_purchase_timestamp) = '2018' GROUP BY purchase_month ORDER BY purchase_month;",
+    "verified": true
+  },
+  {
+    "id": 59,
+    "difficulty": "medium",
+    "question_th": "จำนวนสินค้าเฉลี่ยต่อคำสั่งซื้อ (จำนวนแถวใน order_items เฉลี่ยต่อ order_id) คือเท่าไร",
+    "sql": "SELECT AVG(item_count) AS avg_items_per_order FROM (SELECT order_id, COUNT(*) AS item_count FROM order_items GROUP BY order_id);",
+    "verified": true
+  },
+  {
+    "id": 60,
+    "difficulty": "medium",
+    "question_th": "คำสั่งซื้อที่มีจำนวนสินค้า (order_items) มากกว่า 5 ชิ้น มีทั้งหมดกี่คำสั่งซื้อ",
+    "sql": "SELECT COUNT(*) AS num_orders FROM (SELECT order_id FROM order_items GROUP BY order_id HAVING COUNT(*) > 5);",
+    "verified": true
+  },
+  {
+    "id": 61,
+    "difficulty": "medium",
+    "question_th": "แสดง order_id 5 อันดับแรกที่มีมูลค่ารวม (payment_value) สูงที่สุด",
+    "sql": "SELECT order_id, SUM(payment_value) AS total_paid FROM order_payments GROUP BY order_id ORDER BY total_paid DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 62,
+    "difficulty": "medium",
+    "question_th": "แต่ละสถานะคำสั่งซื้อ (order_status) มีคะแนนรีวิวเฉลี่ยเท่าไร",
+    "sql": "SELECT o.order_status, AVG(r.review_score) AS avg_score FROM orders o JOIN order_reviews r ON o.order_id = r.order_id GROUP BY o.order_status ORDER BY avg_score DESC;",
+    "verified": true
+  },
+  {
+    "id": 63,
+    "difficulty": "medium",
+    "question_th": "หมวดหมู่สินค้า (product_category_name) ที่มีน้ำหนักเฉลี่ย (product_weight_g) สูงที่สุด 5 อันดับแรก",
+    "sql": "SELECT product_category_name, AVG(product_weight_g) AS avg_weight FROM products WHERE product_category_name IS NOT NULL GROUP BY product_category_name ORDER BY avg_weight DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 64,
+    "difficulty": "medium",
+    "question_th": "ผู้ขาย 5 อันดับแรกที่มีคะแนนรีวิวเฉลี่ยสูงที่สุด (ต้องมีรีวิวอย่างน้อย 10 รายการ)",
+    "sql": "SELECT oi.seller_id, AVG(r.review_score) AS avg_score, COUNT(*) AS num_reviews FROM order_items oi JOIN order_reviews r ON oi.order_id = r.order_id GROUP BY oi.seller_id HAVING COUNT(*) >= 10 ORDER BY avg_score DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 65,
+    "difficulty": "medium",
+    "question_th": "รัฐของผู้ขาย (seller_state) ที่มียอดขายรวม (price) สูงที่สุด 5 อันดับแรก",
+    "sql": "SELECT s.seller_state, SUM(oi.price) AS total_sales FROM order_items oi JOIN sellers s ON oi.seller_id = s.seller_id GROUP BY s.seller_state ORDER BY total_sales DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 66,
+    "difficulty": "medium",
+    "question_th": "แต่ละวิธีการชำระเงิน (payment_type) มีจำนวนงวดผ่อนชำระเฉลี่ยเท่าไร",
+    "sql": "SELECT payment_type, AVG(payment_installments) AS avg_installments FROM order_payments GROUP BY payment_type ORDER BY avg_installments DESC;",
+    "verified": true
+  },
+  {
+    "id": 67,
+    "difficulty": "medium",
+    "question_th": "คำสั่งซื้อที่ถูกยกเลิก (canceled) มีจากรัฐใดมากที่สุด 5 อันดับแรก",
+    "sql": "SELECT c.customer_state, COUNT(*) AS num_canceled FROM orders o JOIN customers c ON o.customer_id = c.customer_id WHERE o.order_status = 'canceled' GROUP BY c.customer_state ORDER BY num_canceled DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 68,
+    "difficulty": "medium",
+    "question_th": "ค่าขนส่งเฉลี่ย (freight_value) แยกตามรัฐผู้ขาย 5 อันดับแรกที่แพงที่สุด",
+    "sql": "SELECT s.seller_state, AVG(oi.freight_value) AS avg_freight FROM order_items oi JOIN sellers s ON oi.seller_id = s.seller_id GROUP BY s.seller_state ORDER BY avg_freight DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 69,
+    "difficulty": "medium",
+    "question_th": "จำนวนคำสั่งซื้อที่มีการรีวิวคะแนนต่ำกว่าหรือเท่ากับ 2 คะแนน แยกตามเดือนที่ซื้อ (purchase month) ของปี 2018",
+    "sql": "SELECT strftime('%m', o.order_purchase_timestamp) AS purchase_month, COUNT(*) AS num_low_reviews FROM orders o JOIN order_reviews r ON o.order_id = r.order_id WHERE r.review_score <= 2 AND strftime('%Y', o.order_purchase_timestamp) = '2018' GROUP BY purchase_month ORDER BY purchase_month;",
+    "verified": true
+  },
+  {
+    "id": 70,
+    "difficulty": "medium",
+    "question_th": "แสดงชื่อหมวดหมู่สินค้าภาษาอังกฤษที่มีจำนวนรูปภาพเฉลี่ย (product_photos_qty) สูงที่สุด 5 อันดับแรก",
+    "sql": "SELECT t.product_category_name_english, AVG(p.product_photos_qty) AS avg_photos FROM products p JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name GROUP BY t.product_category_name_english ORDER BY avg_photos DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 71,
+    "difficulty": "medium",
+    "question_th": "จำนวนลูกค้าที่ซื้อซ้ำ (มีมากกว่า 1 order) มีทั้งหมดกี่คน (นับจาก customer_unique_id)",
+    "sql": "SELECT COUNT(*) AS repeat_customers FROM (SELECT c.customer_unique_id FROM orders o JOIN customers c ON o.customer_id = c.customer_id GROUP BY c.customer_unique_id HAVING COUNT(*) > 1);",
+    "verified": true
+  },
+  {
+    "id": 72,
+    "difficulty": "medium",
+    "question_th": "แต่ละปีมียอดขายรวม (payment_value) เท่าไร",
+    "sql": "SELECT strftime('%Y', o.order_purchase_timestamp) AS purchase_year, SUM(op.payment_value) AS total_sales FROM orders o JOIN order_payments op ON o.order_id = op.order_id GROUP BY purchase_year ORDER BY purchase_year;",
+    "verified": true
+  },
+  {
+    "id": 73,
+    "difficulty": "medium",
+    "question_th": "10 สินค้า (product_id) ที่ถูกสั่งซื้อบ่อยที่สุด (นับจำนวนแถวใน order_items)",
+    "sql": "SELECT product_id, COUNT(*) AS times_ordered FROM order_items GROUP BY product_id ORDER BY times_ordered DESC LIMIT 10;",
+    "verified": true
+  },
+  {
+    "id": 74,
+    "difficulty": "medium",
+    "question_th": "แสดงจำนวนคำสั่งซื้อที่ใช้เวลาจัดส่งจริง (delivered_customer_date - purchase_timestamp) เฉลี่ยกี่วัน สำหรับคำสั่งซื้อที่ delivered แล้ว",
+    "sql": "SELECT AVG(julianday(order_delivered_customer_date) - julianday(order_purchase_timestamp)) AS avg_delivery_days FROM orders WHERE order_status = 'delivered' AND order_delivered_customer_date IS NOT NULL;",
+    "verified": true
+  },
+  {
+    "id": 75,
+    "difficulty": "medium",
+    "question_th": "รัฐลูกค้าใดมีระยะเวลาจัดส่งเฉลี่ย (delivery days) นานที่สุด 5 อันดับแรก",
+    "sql": "SELECT c.customer_state, AVG(julianday(o.order_delivered_customer_date) - julianday(o.order_purchase_timestamp)) AS avg_delivery_days FROM orders o JOIN customers c ON o.customer_id = c.customer_id WHERE o.order_status = 'delivered' AND o.order_delivered_customer_date IS NOT NULL GROUP BY c.customer_state ORDER BY avg_delivery_days DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 76,
+    "difficulty": "medium",
+    "question_th": "คำสั่งซื้อที่จัดส่งล่าช้ากว่าประมาณการ (order_delivered_customer_date > order_estimated_delivery_date) มีทั้งหมดกี่รายการ",
+    "sql": "SELECT COUNT(*) AS late_orders FROM orders WHERE order_delivered_customer_date > order_estimated_delivery_date;",
+    "verified": true
+  },
+  {
+    "id": 77,
+    "difficulty": "medium",
+    "question_th": "เปอร์เซ็นต์ของคำสั่งซื้อที่จัดส่งล่าช้ากว่าประมาณการ เทียบกับคำสั่งซื้อที่ delivered ทั้งหมด",
+    "sql": "SELECT ROUND(100.0 * SUM(CASE WHEN order_delivered_customer_date > order_estimated_delivery_date THEN 1 ELSE 0 END) / COUNT(*), 2) AS late_pct FROM orders WHERE order_status = 'delivered' AND order_delivered_customer_date IS NOT NULL;",
+    "verified": true
+  },
+  {
+    "id": 78,
+    "difficulty": "medium",
+    "question_th": "ผู้ขาย 5 อันดับแรกที่มีจำนวนสินค้าต่างชนิด (distinct product_id) ที่ขายมากที่สุด",
+    "sql": "SELECT seller_id, COUNT(DISTINCT product_id) AS num_distinct_products FROM order_items GROUP BY seller_id ORDER BY num_distinct_products DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 79,
+    "difficulty": "medium",
+    "question_th": "แต่ละหมวดหมู่สินค้าภาษาอังกฤษมีราคาสินค้าเฉลี่ยเท่าไร เรียงจากแพงสุด 10 อันดับแรก",
+    "sql": "SELECT t.product_category_name_english, AVG(oi.price) AS avg_price FROM order_items oi JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name GROUP BY t.product_category_name_english ORDER BY avg_price DESC LIMIT 10;",
+    "verified": true
+  },
+  {
+    "id": 80,
+    "difficulty": "medium",
+    "question_th": "จำนวนคำสั่งซื้อที่ชำระเงินมากกว่า 1 ช่องทาง (payment_sequential มากกว่า 1) มีกี่รายการ",
+    "sql": "SELECT COUNT(DISTINCT order_id) AS multi_payment_orders FROM order_payments WHERE payment_sequential > 1;",
+    "verified": true
+  },
+  {
+    "id": 81,
+    "difficulty": "medium",
+    "question_th": "แสดงจำนวนคำสั่งซื้อในแต่ละวันของสัปดาห์ (day of week) จาก order_purchase_timestamp",
+    "sql": "SELECT strftime('%w', order_purchase_timestamp) AS day_of_week, COUNT(*) AS num_orders FROM orders GROUP BY day_of_week ORDER BY day_of_week;",
+    "verified": true
+  },
+  {
+    "id": 82,
+    "difficulty": "medium",
+    "question_th": "แสดงจำนวนคำสั่งซื้อแยกตามชั่วโมง (hour) ที่ซื้อ จาก order_purchase_timestamp",
+    "sql": "SELECT strftime('%H', order_purchase_timestamp) AS purchase_hour, COUNT(*) AS num_orders FROM orders GROUP BY purchase_hour ORDER BY purchase_hour;",
+    "verified": true
+  },
+  {
+    "id": 83,
+    "difficulty": "medium",
+    "question_th": "5 หมวดหมู่สินค้า (ภาษาอังกฤษ) ที่มีค่าขนส่งเฉลี่ย (freight_value) สูงที่สุด",
+    "sql": "SELECT t.product_category_name_english, AVG(oi.freight_value) AS avg_freight FROM order_items oi JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name GROUP BY t.product_category_name_english ORDER BY avg_freight DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 84,
+    "difficulty": "medium",
+    "question_th": "แสดงจำนวน lead ที่ปิดการขายสำเร็จ แยกตาม business_segment เรียงจากมากไปน้อย 5 อันดับแรก",
+    "sql": "SELECT business_segment, COUNT(*) AS num_leads FROM leads_closed GROUP BY business_segment ORDER BY num_leads DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 85,
+    "difficulty": "medium",
+    "question_th": "แสดงจำนวน lead ที่ผ่านการติดต่อ (qualified) แยกตาม origin เรียงจากมากไปน้อย",
+    "sql": "SELECT origin, COUNT(*) AS num_leads FROM leads_qualified GROUP BY origin ORDER BY num_leads DESC;",
+    "verified": true
+  },
+  {
+    "id": 86,
+    "difficulty": "medium",
+    "question_th": "รัฐลูกค้าใดมีคะแนนรีวิวเฉลี่ยต่ำที่สุด 5 อันดับแรก (ต้องมีรีวิวอย่างน้อย 50 รายการ)",
+    "sql": "SELECT c.customer_state, AVG(r.review_score) AS avg_score, COUNT(*) AS num_reviews FROM orders o JOIN customers c ON o.customer_id = c.customer_id JOIN order_reviews r ON o.order_id = r.order_id GROUP BY c.customer_state HAVING COUNT(*) >= 50 ORDER BY avg_score ASC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 87,
+    "difficulty": "medium",
+    "question_th": "แสดงจำนวนคำสั่งซื้อที่ไม่มีการรีวิวเลย (ไม่มี record ใน order_reviews)",
+    "sql": "SELECT COUNT(*) AS orders_without_review FROM orders o WHERE NOT EXISTS (SELECT 1 FROM order_reviews r WHERE r.order_id = o.order_id);",
+    "verified": true
+  },
+  {
+    "id": 88,
+    "difficulty": "medium",
+    "question_th": "ลูกค้าในรัฐใดมีมูลค่าการซื้อเฉลี่ยต่อคำสั่งซื้อ (average order value) สูงที่สุด 5 อันดับแรก (ต้องมีคำสั่งซื้ออย่างน้อย 100 รายการ)",
+    "sql": "SELECT c.customer_state, AVG(op.payment_value) AS avg_order_value, COUNT(DISTINCT o.order_id) AS num_orders FROM orders o JOIN customers c ON o.customer_id = c.customer_id JOIN order_payments op ON o.order_id = op.order_id GROUP BY c.customer_state HAVING COUNT(DISTINCT o.order_id) >= 100 ORDER BY avg_order_value DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 89,
+    "difficulty": "medium",
+    "question_th": "แสดงหมวดหมู่สินค้า (ภาษาอังกฤษ) ที่มีจำนวนคำสั่งซื้อ (distinct order_id) มากที่สุด 10 อันดับแรก",
+    "sql": "SELECT t.product_category_name_english, COUNT(DISTINCT oi.order_id) AS num_orders FROM order_items oi JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name GROUP BY t.product_category_name_english ORDER BY num_orders DESC LIMIT 10;",
+    "verified": true
+  },
+  {
+    "id": 90,
+    "difficulty": "medium",
+    "question_th": "เมืองของผู้ขาย (seller_city) ที่มีคะแนนรีวิวเฉลี่ยสูงสุด 5 อันดับแรก (ต้องมีรีวิวอย่างน้อย 30 รายการ)",
+    "sql": "SELECT s.seller_city, AVG(r.review_score) AS avg_score, COUNT(*) AS num_reviews FROM order_items oi JOIN sellers s ON oi.seller_id = s.seller_id JOIN order_reviews r ON oi.order_id = r.order_id GROUP BY s.seller_city HAVING COUNT(*) >= 30 ORDER BY avg_score DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 91,
+    "difficulty": "medium",
+    "question_th": "แสดงจำนวนคำสั่งซื้อที่ใช้บัตรเครดิต (credit_card) ผ่อนมากกว่า 6 งวด",
+    "sql": "SELECT COUNT(*) AS orders_installments_gt6 FROM order_payments WHERE payment_type = 'credit_card' AND payment_installments > 6;",
+    "verified": true
+  },
+  {
+    "id": 92,
+    "difficulty": "medium",
+    "question_th": "แสดงยอดขายรวม (price) ของสินค้าทั้งหมด แยกตามไตรมาส (quarter) ของปี 2017",
+    "sql": "SELECT (CAST(strftime('%m', o.order_purchase_timestamp) AS INTEGER)-1)/3 + 1 AS quarter, SUM(oi.price) AS total_sales FROM orders o JOIN order_items oi ON o.order_id = oi.order_id WHERE strftime('%Y', o.order_purchase_timestamp) = '2017' GROUP BY quarter ORDER BY quarter;",
+    "verified": true
+  },
+  {
+    "id": 93,
+    "difficulty": "medium",
+    "question_th": "แสดง 5 สินค้า (product_id) ที่มีรายได้รวม (price รวม) สูงที่สุด พร้อมหมวดหมู่ภาษาอังกฤษ",
+    "sql": "SELECT oi.product_id, t.product_category_name_english, SUM(oi.price) AS total_revenue FROM order_items oi JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name GROUP BY oi.product_id ORDER BY total_revenue DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 94,
+    "difficulty": "medium",
+    "question_th": "แสดงจำนวนคำสั่งซื้อของลูกค้าที่ customer_state เป็น 'RJ' แยกตาม order_status",
+    "sql": "SELECT o.order_status, COUNT(*) AS num_orders FROM orders o JOIN customers c ON o.customer_id = c.customer_id WHERE c.customer_state = 'RJ' GROUP BY o.order_status ORDER BY num_orders DESC;",
+    "verified": true
+  },
+  {
+    "id": 95,
+    "difficulty": "medium",
+    "question_th": "แสดงค่าเฉลี่ยความยาว+ความกว้าง+ความสูงของสินค้า (product_length_cm+product_width_cm+product_height_cm) ต่อหมวดหมู่ 5 อันดับแรกที่มีขนาดใหญ่ที่สุด",
+    "sql": "SELECT product_category_name, AVG(product_length_cm + product_width_cm + product_height_cm) AS avg_total_dimension FROM products WHERE product_category_name IS NOT NULL GROUP BY product_category_name ORDER BY avg_total_dimension DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 96,
+    "difficulty": "medium",
+    "question_th": "แสดงจำนวนคำสั่งซื้อที่ order_approved_at ห่างจาก order_purchase_timestamp มากกว่า 1 วัน",
+    "sql": "SELECT COUNT(*) AS delayed_approval FROM orders WHERE order_approved_at IS NOT NULL AND julianday(order_approved_at) - julianday(order_purchase_timestamp) > 1;",
+    "verified": true
+  },
+  {
+    "id": 97,
+    "difficulty": "medium",
+    "question_th": "แสดงจำนวนสินค้าที่ไม่มีหมวดหมู่ (product_category_name เป็น NULL)",
+    "sql": "SELECT COUNT(*) AS products_without_category FROM products WHERE product_category_name IS NULL;",
+    "verified": true
+  },
+  {
+    "id": 98,
+    "difficulty": "medium",
+    "question_th": "แสดงยอดขายรวม (price) แยกตามหมวดหมู่ภาษาอังกฤษที่ขึ้นต้นด้วยคำว่า 'furniture'",
+    "sql": "SELECT t.product_category_name_english, SUM(oi.price) AS total_sales FROM order_items oi JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name WHERE t.product_category_name_english LIKE 'furniture%' GROUP BY t.product_category_name_english ORDER BY total_sales DESC;",
+    "verified": true
+  },
+  {
+    "id": 99,
+    "difficulty": "medium",
+    "question_th": "แสดงจำนวนผู้ขายที่ขายสินค้าในหมวดหมู่มากกว่า 1 หมวดหมู่ (distinct product_category_name)",
+    "sql": "SELECT COUNT(*) AS multi_category_sellers FROM (SELECT oi.seller_id FROM order_items oi JOIN products p ON oi.product_id = p.product_id WHERE p.product_category_name IS NOT NULL GROUP BY oi.seller_id HAVING COUNT(DISTINCT p.product_category_name) > 1);",
+    "verified": true
+  },
+  {
+    "id": 100,
+    "difficulty": "medium",
+    "question_th": "แสดงจำนวนคำสั่งซื้อที่มี payment_type เป็น 'not_defined'",
+    "sql": "SELECT COUNT(*) AS not_defined_payments FROM order_payments WHERE payment_type = 'not_defined';",
+    "verified": true
+  },
+  {
+    "id": 101,
+    "difficulty": "medium",
+    "question_th": "แสดงมูลค่าการชำระเงินรวม (payment_value) ของคำสั่งซื้อที่ถูกยกเลิก (canceled)",
+    "sql": "SELECT SUM(op.payment_value) AS total_canceled_value FROM orders o JOIN order_payments op ON o.order_id = op.order_id WHERE o.order_status = 'canceled';",
+    "verified": true
+  },
+  {
+    "id": 102,
+    "difficulty": "medium",
+    "question_th": "5 รหัสไปรษณีย์ (zip_code_prefix) ของลูกค้าที่มีจำนวนคำสั่งซื้อมากที่สุด",
+    "sql": "SELECT c.customer_zip_code_prefix, COUNT(*) AS num_orders FROM orders o JOIN customers c ON o.customer_id = c.customer_id GROUP BY c.customer_zip_code_prefix ORDER BY num_orders DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 103,
+    "difficulty": "medium",
+    "question_th": "แสดงจำนวนคำสั่งซื้อที่ลูกค้าจ่ายด้วย boleto มากกว่า 200 บราซิลเรียล (payment_value > 200)",
+    "sql": "SELECT COUNT(*) AS num_orders FROM order_payments WHERE payment_type = 'boleto' AND payment_value > 200;",
+    "verified": true
+  },
+  {
+    "id": 104,
+    "difficulty": "medium",
+    "question_th": "แสดงรายได้รวม (price) ต่อเดือนของปี 2017 เรียงตามเดือน",
+    "sql": "SELECT strftime('%m', o.order_purchase_timestamp) AS month, SUM(oi.price) AS total_revenue FROM orders o JOIN order_items oi ON o.order_id = oi.order_id WHERE strftime('%Y', o.order_purchase_timestamp) = '2017' GROUP BY month ORDER BY month;",
+    "verified": true
+  },
+  {
+    "id": 105,
+    "difficulty": "medium",
+    "question_th": "แสดง 5 อันดับหมวดหมู่สินค้าภาษาอังกฤษที่มีน้ำหนักเฉลี่ยเบาที่สุด (ต้องมีสินค้าอย่างน้อย 20 รายการ)",
+    "sql": "SELECT t.product_category_name_english, AVG(p.product_weight_g) AS avg_weight, COUNT(*) AS num_products FROM products p JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name GROUP BY t.product_category_name_english HAVING COUNT(*) >= 20 ORDER BY avg_weight ASC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 106,
+    "difficulty": "hard",
+    "question_th": "แสดง 5 ผู้ขายที่มียอดขายรวม (price) สูงที่สุด พร้อมชื่อรัฐและเมืองของผู้ขาย",
+    "sql": "SELECT s.seller_id, s.seller_city, s.seller_state, SUM(oi.price) AS total_sales FROM order_items oi JOIN sellers s ON oi.seller_id = s.seller_id GROUP BY s.seller_id ORDER BY total_sales DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 107,
+    "difficulty": "hard",
+    "question_th": "แสดงลูกค้า 5 อันดับแรกที่ใช้จ่ายรวม (payment_value) มากที่สุด พร้อมจำนวนคำสั่งซื้อและรัฐที่อยู่",
+    "sql": "SELECT c.customer_unique_id, c.customer_state, COUNT(DISTINCT o.order_id) AS num_orders, SUM(op.payment_value) AS total_spent FROM customers c JOIN orders o ON c.customer_id = o.customer_id JOIN order_payments op ON o.order_id = op.order_id GROUP BY c.customer_unique_id ORDER BY total_spent DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 108,
+    "difficulty": "hard",
+    "question_th": "หาคำสั่งซื้อที่มีมูลค่ารวม (payment_value) สูงกว่าค่าเฉลี่ยของมูลค่าคำสั่งซื้อทั้งหมด มีทั้งหมดกี่รายการ",
+    "sql": "SELECT COUNT(*) AS num_orders_above_avg FROM (SELECT order_id, SUM(payment_value) AS order_total FROM order_payments GROUP BY order_id) sub WHERE order_total > (SELECT AVG(order_total) FROM (SELECT order_id, SUM(payment_value) AS order_total FROM order_payments GROUP BY order_id));",
+    "verified": true
+  },
+  {
+    "id": 109,
+    "difficulty": "hard",
+    "question_th": "แสดง 5 หมวดหมู่สินค้า (ภาษาอังกฤษ) ที่มีจำนวนคำสั่งซื้อล่าช้า (delivered_customer_date > estimated_delivery_date) มากที่สุด",
+    "sql": "SELECT t.product_category_name_english, COUNT(DISTINCT o.order_id) AS num_late_orders FROM orders o JOIN order_items oi ON o.order_id = oi.order_id JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name WHERE o.order_delivered_customer_date > o.order_estimated_delivery_date GROUP BY t.product_category_name_english ORDER BY num_late_orders DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 110,
+    "difficulty": "hard",
+    "question_th": "หาผู้ขายที่มีรายได้รวม (price) สูงกว่าค่าเฉลี่ยรายได้ของผู้ขายทั้งหมด แสดงจำนวนผู้ขายที่เข้าเงื่อนไขนี้",
+    "sql": "SELECT COUNT(*) AS num_sellers_above_avg FROM (SELECT seller_id, SUM(price) AS total_sales FROM order_items GROUP BY seller_id) sub WHERE total_sales > (SELECT AVG(total_sales) FROM (SELECT seller_id, SUM(price) AS total_sales FROM order_items GROUP BY seller_id));",
+    "verified": true
+  },
+  {
+    "id": 111,
+    "difficulty": "hard",
+    "question_th": "แสดงคำสั่งซื้อ 5 อันดับแรกที่มีระยะเวลาจัดส่งจริง (จากวันซื้อถึงวันที่ลูกค้าได้รับ) นานที่สุด พร้อมชื่อรัฐลูกค้า",
+    "sql": "SELECT o.order_id, c.customer_state, julianday(o.order_delivered_customer_date) - julianday(o.order_purchase_timestamp) AS delivery_days FROM orders o JOIN customers c ON o.customer_id = c.customer_id WHERE o.order_status = 'delivered' AND o.order_delivered_customer_date IS NOT NULL ORDER BY delivery_days DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 112,
+    "difficulty": "hard",
+    "question_th": "แสดงหมวดหมู่สินค้า (ภาษาอังกฤษ) 5 อันดับแรกที่มีคะแนนรีวิวเฉลี่ยต่ำที่สุด (ต้องมีรีวิวอย่างน้อย 50 รายการ)",
+    "sql": "SELECT t.product_category_name_english, AVG(r.review_score) AS avg_score, COUNT(*) AS num_reviews FROM order_items oi JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name JOIN order_reviews r ON oi.order_id = r.order_id GROUP BY t.product_category_name_english HAVING COUNT(*) >= 50 ORDER BY avg_score ASC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 113,
+    "difficulty": "hard",
+    "question_th": "แสดงจำนวนลูกค้าในแต่ละรัฐที่ไม่เคยได้รับคำสั่งซื้อสำเร็จเลย (ไม่มี order ที่ order_status = 'delivered')",
+    "sql": "SELECT c.customer_state, COUNT(DISTINCT c.customer_id) AS num_customers FROM customers c WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id AND o.order_status = 'delivered') GROUP BY c.customer_state ORDER BY num_customers DESC LIMIT 10;",
+    "verified": true
+  },
+  {
+    "id": 114,
+    "difficulty": "hard",
+    "question_th": "จัดอันดับ (RANK) หมวดหมู่สินค้าภาษาอังกฤษตามยอดขายรวม (price) จากมากไปน้อย แสดง 10 อันดับแรกพร้อมลำดับ",
+    "sql": "SELECT product_category_name_english, total_sales, RANK() OVER (ORDER BY total_sales DESC) AS sales_rank FROM (SELECT t.product_category_name_english, SUM(oi.price) AS total_sales FROM order_items oi JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name GROUP BY t.product_category_name_english) sub ORDER BY sales_rank LIMIT 10;",
+    "verified": true
+  },
+  {
+    "id": 115,
+    "difficulty": "hard",
+    "question_th": "แสดงยอดขายสะสม (running total) ของแต่ละเดือนในปี 2017 เรียงตามเดือน",
+    "sql": "SELECT month, monthly_sales, SUM(monthly_sales) OVER (ORDER BY month) AS running_total FROM (SELECT strftime('%m', o.order_purchase_timestamp) AS month, SUM(oi.price) AS monthly_sales FROM orders o JOIN order_items oi ON o.order_id = oi.order_id WHERE strftime('%Y', o.order_purchase_timestamp) = '2017' GROUP BY month) sub ORDER BY month;",
+    "verified": true
+  },
+  {
+    "id": 116,
+    "difficulty": "hard",
+    "question_th": "หาผู้ขาย 1 อันดับแรกที่มียอดขายสูงสุดในแต่ละรัฐ (top seller per state) โดยแสดง 10 รัฐแรก",
+    "sql": "WITH seller_sales AS (SELECT s.seller_state, s.seller_id, SUM(oi.price) AS total_sales, RANK() OVER (PARTITION BY s.seller_state ORDER BY SUM(oi.price) DESC) AS rnk FROM order_items oi JOIN sellers s ON oi.seller_id = s.seller_id GROUP BY s.seller_state, s.seller_id) SELECT seller_state, seller_id, total_sales FROM seller_sales WHERE rnk = 1 ORDER BY total_sales DESC LIMIT 10;",
+    "verified": true
+  },
+  {
+    "id": 117,
+    "difficulty": "hard",
+    "question_th": "แสดงเปอร์เซ็นต์ของแต่ละวิธีการชำระเงิน (payment_type) เทียบกับยอดชำระเงินรวมทั้งหมด",
+    "sql": "SELECT payment_type, SUM(payment_value) AS total_value, ROUND(100.0 * SUM(payment_value) / (SELECT SUM(payment_value) FROM order_payments), 2) AS pct_of_total FROM order_payments GROUP BY payment_type ORDER BY pct_of_total DESC;",
+    "verified": true
+  },
+  {
+    "id": 118,
+    "difficulty": "hard",
+    "question_th": "แสดงลูกค้าที่มีคำสั่งซื้อในทั้งปี 2017 และปี 2018 (ซื้อต่อเนื่องข้ามปี) มีทั้งหมดกี่คน",
+    "sql": "SELECT COUNT(*) AS customers_both_years FROM (SELECT c.customer_unique_id FROM orders o JOIN customers c ON o.customer_id = c.customer_id GROUP BY c.customer_unique_id HAVING SUM(CASE WHEN strftime('%Y', o.order_purchase_timestamp) = '2017' THEN 1 ELSE 0 END) > 0 AND SUM(CASE WHEN strftime('%Y', o.order_purchase_timestamp) = '2018' THEN 1 ELSE 0 END) > 0);",
+    "verified": true
+  },
+  {
+    "id": 119,
+    "difficulty": "hard",
+    "question_th": "แสดงสินค้า 5 อันดับแรกที่มีอัตราส่วนค่าขนส่งต่อราคาสินค้า (freight_value/price) สูงที่สุด (เฉพาะสินค้าที่ price > 0)",
+    "sql": "SELECT product_id, price, freight_value, ROUND(freight_value * 1.0 / price, 3) AS freight_price_ratio FROM order_items WHERE price > 0 ORDER BY freight_price_ratio DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 120,
+    "difficulty": "hard",
+    "question_th": "แสดงหมวดหมู่สินค้า (ภาษาอังกฤษ) ที่มีสัดส่วนคำสั่งซื้อที่ถูกยกเลิก (canceled) ต่อคำสั่งซื้อทั้งหมดของหมวดนั้นสูงที่สุด 5 อันดับแรก (ต้องมีคำสั่งซื้ออย่างน้อย 30 รายการ)",
+    "sql": "SELECT t.product_category_name_english, COUNT(*) AS total_orders, SUM(CASE WHEN o.order_status = 'canceled' THEN 1 ELSE 0 END) AS canceled_orders, ROUND(100.0 * SUM(CASE WHEN o.order_status = 'canceled' THEN 1 ELSE 0 END) / COUNT(*), 2) AS cancel_rate FROM orders o JOIN order_items oi ON o.order_id = oi.order_id JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name GROUP BY t.product_category_name_english HAVING COUNT(*) >= 30 ORDER BY cancel_rate DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 121,
+    "difficulty": "hard",
+    "question_th": "แสดงผู้ขาย 5 อันดับแรกที่มีจำนวนคำสั่งซื้อล่าช้า (late delivery) มากที่สุด พร้อมเปอร์เซ็นต์เทียบกับคำสั่งซื้อทั้งหมดของผู้ขายนั้น (ต้องมีคำสั่งซื้ออย่างน้อย 20 รายการ)",
+    "sql": "SELECT oi.seller_id, COUNT(DISTINCT o.order_id) AS total_orders, SUM(CASE WHEN o.order_delivered_customer_date > o.order_estimated_delivery_date THEN 1 ELSE 0 END) AS late_orders, ROUND(100.0 * SUM(CASE WHEN o.order_delivered_customer_date > o.order_estimated_delivery_date THEN 1 ELSE 0 END) / COUNT(DISTINCT o.order_id), 2) AS late_pct FROM orders o JOIN order_items oi ON o.order_id = oi.order_id GROUP BY oi.seller_id HAVING COUNT(DISTINCT o.order_id) >= 20 ORDER BY late_pct DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 122,
+    "difficulty": "hard",
+    "question_th": "แสดงลูกค้าที่มีมูลค่าการซื้อรวม (payment_value) อยู่ใน 1% บนสุด (top 1%) ของลูกค้าทั้งหมด มีทั้งหมดกี่คน",
+    "sql": "SELECT COUNT(*) AS top1pct_customers FROM (SELECT c.customer_unique_id, SUM(op.payment_value) AS total_spent FROM customers c JOIN orders o ON c.customer_id = o.customer_id JOIN order_payments op ON o.order_id = op.order_id GROUP BY c.customer_unique_id) sub WHERE total_spent >= (SELECT total_spent FROM (SELECT c.customer_unique_id, SUM(op.payment_value) AS total_spent FROM customers c JOIN orders o ON c.customer_id = o.customer_id JOIN order_payments op ON o.order_id = op.order_id GROUP BY c.customer_unique_id ORDER BY total_spent DESC) ORDER BY total_spent DESC LIMIT 1 OFFSET (SELECT CAST(COUNT(DISTINCT customer_unique_id) * 0.01 AS INTEGER) FROM customers));",
+    "verified": true
+  },
+  {
+    "id": 123,
+    "difficulty": "hard",
+    "question_th": "แสดงจำนวนคำสั่งซื้อในแต่ละเดือน เปรียบเทียบกับเดือนก่อนหน้า (month-over-month) โดยใช้ window function ในปี 2018",
+    "sql": "SELECT month, num_orders, LAG(num_orders) OVER (ORDER BY month) AS prev_month_orders, num_orders - LAG(num_orders) OVER (ORDER BY month) AS change FROM (SELECT strftime('%m', order_purchase_timestamp) AS month, COUNT(*) AS num_orders FROM orders WHERE strftime('%Y', order_purchase_timestamp) = '2018' GROUP BY month) sub ORDER BY month;",
+    "verified": true
+  },
+  {
+    "id": 124,
+    "difficulty": "hard",
+    "question_th": "แสดงหมวดหมู่สินค้า (ภาษาอังกฤษ) ที่มีค่าสัมประสิทธิ์ความแปรผัน (coefficient of variation) ของราคาสูงที่สุด 5 อันดับ (ต้องมีอย่างน้อย 30 รายการขาย)",
+    "sql": "SELECT t.product_category_name_english, AVG(oi.price) AS avg_price, COUNT(*) AS n FROM order_items oi JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name GROUP BY t.product_category_name_english HAVING COUNT(*) >= 30 ORDER BY avg_price DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 125,
+    "difficulty": "hard",
+    "question_th": "แสดงลำดับ (row number) ของแต่ละคำสั่งซื้อของลูกค้าคนหนึ่ง (เลือกลูกค้าที่มีคำสั่งซื้อมากที่สุด) เรียงตามวันที่ซื้อ",
+    "sql": "WITH top_customer AS (SELECT customer_id FROM orders GROUP BY customer_id ORDER BY COUNT(*) DESC LIMIT 1) SELECT order_id, order_purchase_timestamp, ROW_NUMBER() OVER (ORDER BY order_purchase_timestamp) AS order_seq FROM orders WHERE customer_id = (SELECT customer_id FROM top_customer);",
+    "verified": true
+  },
+  {
+    "id": 126,
+    "difficulty": "hard",
+    "question_th": "แสดงคำสั่งซื้อที่มีจำนวนสินค้า (order_items) มากที่สุดในแต่ละสถานะ (order_status) - แสดง 1 คำสั่งซื้อที่มีสินค้ามากที่สุดต่อสถานะ",
+    "sql": "WITH item_counts AS (SELECT o.order_status, oi.order_id, COUNT(*) AS num_items, RANK() OVER (PARTITION BY o.order_status ORDER BY COUNT(*) DESC) AS rnk FROM orders o JOIN order_items oi ON o.order_id = oi.order_id GROUP BY o.order_status, oi.order_id) SELECT order_status, order_id, num_items FROM item_counts WHERE rnk = 1;",
+    "verified": true
+  },
+  {
+    "id": 127,
+    "difficulty": "hard",
+    "question_th": "แสดงยอดขายรวมของ 10 อันดับหมวดหมู่สินค้า (ภาษาอังกฤษ) แรก พร้อมสัดส่วนสะสม (cumulative percentage) ของยอดขายทั้งหมด",
+    "sql": "WITH cat_sales AS (SELECT t.product_category_name_english AS category, SUM(oi.price) AS sales FROM order_items oi JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name GROUP BY category) SELECT category, sales, ROUND(100.0 * SUM(sales) OVER (ORDER BY sales DESC) / (SELECT SUM(sales) FROM cat_sales), 2) AS cumulative_pct FROM cat_sales ORDER BY sales DESC LIMIT 10;",
+    "verified": true
+  },
+  {
+    "id": 128,
+    "difficulty": "hard",
+    "question_th": "แสดงจำนวนลูกค้าใหม่ (ลูกค้าที่มีคำสั่งซื้อแรกสุด) ในแต่ละเดือนของปี 2018",
+    "sql": "WITH first_order AS (SELECT c.customer_unique_id, MIN(o.order_purchase_timestamp) AS first_purchase FROM orders o JOIN customers c ON o.customer_id = c.customer_id GROUP BY c.customer_unique_id) SELECT strftime('%m', first_purchase) AS month, COUNT(*) AS new_customers FROM first_order WHERE strftime('%Y', first_purchase) = '2018' GROUP BY month ORDER BY month;",
+    "verified": true
+  },
+  {
+    "id": 129,
+    "difficulty": "hard",
+    "question_th": "แสดงคะแนนรีวิวเฉลี่ยของผู้ขายแต่ละราย เปรียบเทียบกับคะแนนรีวิวเฉลี่ยโดยรวมของทุกผู้ขาย (แสดงส่วนต่าง) สำหรับ 10 ผู้ขายที่มีรีวิวมากที่สุด",
+    "sql": "WITH seller_reviews AS (SELECT oi.seller_id, AVG(r.review_score) AS avg_score, COUNT(*) AS num_reviews FROM order_items oi JOIN order_reviews r ON oi.order_id = r.order_id GROUP BY oi.seller_id) SELECT seller_id, avg_score, num_reviews, ROUND(avg_score - (SELECT AVG(review_score) FROM order_reviews), 2) AS diff_from_overall FROM seller_reviews ORDER BY num_reviews DESC LIMIT 10;",
+    "verified": true
+  },
+  {
+    "id": 130,
+    "difficulty": "hard",
+    "question_th": "แสดงจำนวนคำสั่งซื้อที่ใช้เวลาระหว่างอนุมัติ (approved) จนถึงส่งมอบให้ขนส่ง (delivered_carrier_date) นานกว่า 3 วัน แยกตามหมวดหมู่ (ภาษาอังกฤษ) 5 อันดับแรก",
+    "sql": "SELECT t.product_category_name_english, COUNT(DISTINCT o.order_id) AS num_delayed FROM orders o JOIN order_items oi ON o.order_id = oi.order_id JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name WHERE o.order_approved_at IS NOT NULL AND o.order_delivered_carrier_date IS NOT NULL AND julianday(o.order_delivered_carrier_date) - julianday(o.order_approved_at) > 3 GROUP BY t.product_category_name_english ORDER BY num_delayed DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 131,
+    "difficulty": "hard",
+    "question_th": "แสดงเปอร์เซ็นต์ของ lead ที่ผ่านการติดต่อ (qualified) ที่สามารถปิดการขายสำเร็จ (closed) ได้ จากทั้งหมด",
+    "sql": "SELECT ROUND(100.0 * (SELECT COUNT(*) FROM leads_closed) / (SELECT COUNT(*) FROM leads_qualified), 2) AS conversion_rate_pct;",
+    "verified": true
+  },
+  {
+    "id": 132,
+    "difficulty": "hard",
+    "question_th": "แสดงจำนวนคำสั่งซื้อในแต่ละรัฐ พร้อมสัดส่วน (%) เทียบกับจำนวนคำสั่งซื้อทั้งหมด เรียงจากมากไปน้อย 10 อันดับแรก",
+    "sql": "SELECT c.customer_state, COUNT(*) AS num_orders, ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM orders), 2) AS pct_of_total FROM orders o JOIN customers c ON o.customer_id = c.customer_id GROUP BY c.customer_state ORDER BY num_orders DESC LIMIT 10;",
+    "verified": true
+  },
+  {
+    "id": 133,
+    "difficulty": "hard",
+    "question_th": "แสดงผู้ขาย 5 อันดับแรกที่มีความหลากหลายของหมวดหมู่สินค้า (distinct category) มากที่สุด พร้อมยอดขายรวม",
+    "sql": "SELECT oi.seller_id, COUNT(DISTINCT p.product_category_name) AS num_categories, SUM(oi.price) AS total_sales FROM order_items oi JOIN products p ON oi.product_id = p.product_id WHERE p.product_category_name IS NOT NULL GROUP BY oi.seller_id ORDER BY num_categories DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 134,
+    "difficulty": "hard",
+    "question_th": "แสดงค่าเฉลี่ยเคลื่อนที่ (moving average 3 เดือน) ของยอดขายรายเดือนในปี 2018",
+    "sql": "WITH monthly AS (SELECT strftime('%m', o.order_purchase_timestamp) AS month, SUM(oi.price) AS sales FROM orders o JOIN order_items oi ON o.order_id = oi.order_id WHERE strftime('%Y', o.order_purchase_timestamp) = '2018' GROUP BY month) SELECT month, sales, AVG(sales) OVER (ORDER BY month ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS moving_avg_3m FROM monthly ORDER BY month;",
+    "verified": true
+  },
+  {
+    "id": 135,
+    "difficulty": "hard",
+    "question_th": "แสดงรัฐลูกค้าที่มีอัตราการซื้อซ้ำ (repeat purchase rate) สูงที่สุด 5 อันดับแรก (ต้องมีลูกค้าอย่างน้อย 200 คน)",
+    "sql": "WITH cust_orders AS (SELECT c.customer_state, c.customer_unique_id, COUNT(*) AS num_orders FROM orders o JOIN customers c ON o.customer_id = c.customer_id GROUP BY c.customer_state, c.customer_unique_id) SELECT customer_state, COUNT(*) AS total_customers, SUM(CASE WHEN num_orders > 1 THEN 1 ELSE 0 END) AS repeat_customers, ROUND(100.0 * SUM(CASE WHEN num_orders > 1 THEN 1 ELSE 0 END) / COUNT(*), 2) AS repeat_rate_pct FROM cust_orders GROUP BY customer_state HAVING COUNT(*) >= 200 ORDER BY repeat_rate_pct DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 136,
+    "difficulty": "extra_hard",
+    "question_th": "แสดง Customer Lifetime Value (รวม payment_value ตลอดอายุการซื้อ) เฉลี่ยของลูกค้า แยกตามรัฐ 5 อันดับแรกที่สูงที่สุด พร้อมจำนวนลูกค้าที่ใช้คำนวณ (ต้องมีลูกค้าอย่างน้อย 100 คนต่อรัฐ)",
+    "sql": "WITH clv AS (SELECT c.customer_state, c.customer_unique_id, SUM(op.payment_value) AS ltv FROM customers c JOIN orders o ON c.customer_id = o.customer_id JOIN order_payments op ON o.order_id = op.order_id GROUP BY c.customer_state, c.customer_unique_id) SELECT customer_state, COUNT(*) AS num_customers, ROUND(AVG(ltv), 2) AS avg_ltv FROM clv GROUP BY customer_state HAVING COUNT(*) >= 100 ORDER BY avg_ltv DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 137,
+    "difficulty": "extra_hard",
+    "question_th": "จัดกลุ่มลูกค้าแบบ RFM อย่างง่าย: แสดงจำนวนลูกค้าในแต่ละกลุ่ม Recency (ซื้อล่าสุดภายใน 90 วัน / 91-180 วัน / มากกว่า 180 วัน นับจากวันที่ล่าสุดในระบบ)",
+    "sql": "WITH last_purchase AS (SELECT c.customer_unique_id, MAX(o.order_purchase_timestamp) AS last_order_date FROM orders o JOIN customers c ON o.customer_id = c.customer_id GROUP BY c.customer_unique_id), max_date AS (SELECT MAX(order_purchase_timestamp) AS ref_date FROM orders) SELECT CASE WHEN julianday((SELECT ref_date FROM max_date)) - julianday(last_order_date) <= 90 THEN '0-90 days' WHEN julianday((SELECT ref_date FROM max_date)) - julianday(last_order_date) <= 180 THEN '91-180 days' ELSE '180+ days' END AS recency_bucket, COUNT(*) AS num_customers FROM last_purchase GROUP BY recency_bucket;",
+    "verified": true
+  },
+  {
+    "id": 138,
+    "difficulty": "extra_hard",
+    "question_th": "แสดง Top 3 สินค้าที่ขายดีที่สุด (ตามยอดขายรวม) ในแต่ละหมวดหมู่ภาษาอังกฤษ สำหรับ 5 หมวดหมู่ที่มียอดขายรวมสูงสุด",
+    "sql": "WITH cat_totals AS (SELECT t.product_category_name_english AS category, SUM(oi.price) AS cat_sales FROM order_items oi JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name GROUP BY category ORDER BY cat_sales DESC LIMIT 5), product_sales AS (SELECT t.product_category_name_english AS category, oi.product_id, SUM(oi.price) AS product_total, RANK() OVER (PARTITION BY t.product_category_name_english ORDER BY SUM(oi.price) DESC) AS rnk FROM order_items oi JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name WHERE t.product_category_name_english IN (SELECT category FROM cat_totals) GROUP BY category, oi.product_id) SELECT category, product_id, product_total FROM product_sales WHERE rnk <= 3 ORDER BY category, rnk;",
+    "verified": true
+  },
+  {
+    "id": 139,
+    "difficulty": "extra_hard",
+    "question_th": "คำนวณอัตราการรักษาลูกค้า (retention) แบบง่าย: จากลูกค้าที่ซื้อครั้งแรกในไตรมาสที่ 1 ปี 2018 มีกี่คนที่กลับมาซื้อซ้ำภายใน 90 วันถัดไป",
+    "sql": "WITH first_q1 AS (SELECT c.customer_unique_id, MIN(o.order_purchase_timestamp) AS first_order FROM orders o JOIN customers c ON o.customer_id = c.customer_id GROUP BY c.customer_unique_id HAVING MIN(o.order_purchase_timestamp) BETWEEN '2018-01-01' AND '2018-03-31'), repeat_check AS (SELECT f.customer_unique_id, EXISTS (SELECT 1 FROM orders o2 JOIN customers c2 ON o2.customer_id = c2.customer_id WHERE c2.customer_unique_id = f.customer_unique_id AND o2.order_purchase_timestamp > f.first_order AND julianday(o2.order_purchase_timestamp) - julianday(f.first_order) <= 90) AS returned FROM first_q1 f) SELECT COUNT(*) AS total_new_customers_q1, SUM(returned) AS returned_within_90_days FROM repeat_check;",
+    "verified": true
+  },
+  {
+    "id": 140,
+    "difficulty": "extra_hard",
+    "question_th": "แสดงคำสั่งซื้อที่มีสินค้าจากหลายผู้ขาย (multi-seller order) มีทั้งหมดกี่รายการ และคิดเป็นกี่เปอร์เซ็นต์ของคำสั่งซื้อทั้งหมดที่มี order_items",
+    "sql": "WITH seller_counts AS (SELECT order_id, COUNT(DISTINCT seller_id) AS num_sellers FROM order_items GROUP BY order_id) SELECT SUM(CASE WHEN num_sellers > 1 THEN 1 ELSE 0 END) AS multi_seller_orders, ROUND(100.0 * SUM(CASE WHEN num_sellers > 1 THEN 1 ELSE 0 END) / COUNT(*), 2) AS pct_of_orders FROM seller_counts;",
+    "verified": true
+  },
+  {
+    "id": 141,
+    "difficulty": "extra_hard",
+    "question_th": "แสดงหมวดหมู่สินค้า (ภาษาอังกฤษ) ที่มีอัตราการเติบโตของยอดขาย (จากปี 2017 เทียบปี 2018) สูงที่สุด 5 อันดับแรก (ต้องมียอดขายในปี 2017 อย่างน้อย 1000)",
+    "sql": "WITH yearly_sales AS (SELECT t.product_category_name_english AS category, strftime('%Y', o.order_purchase_timestamp) AS yr, SUM(oi.price) AS sales FROM orders o JOIN order_items oi ON o.order_id = oi.order_id JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name WHERE strftime('%Y', o.order_purchase_timestamp) IN ('2017','2018') GROUP BY category, yr), pivoted AS (SELECT category, SUM(CASE WHEN yr = '2017' THEN sales ELSE 0 END) AS sales_2017, SUM(CASE WHEN yr = '2018' THEN sales ELSE 0 END) AS sales_2018 FROM yearly_sales GROUP BY category) SELECT category, sales_2017, sales_2018, ROUND(100.0 * (sales_2018 - sales_2017) / sales_2017, 2) AS growth_pct FROM pivoted WHERE sales_2017 >= 1000 ORDER BY growth_pct DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 142,
+    "difficulty": "extra_hard",
+    "question_th": "แสดง Pareto analysis: กี่เปอร์เซ็นต์ของผู้ขายทั้งหมดที่สร้างยอดขายรวมคิดเป็น 80% ของยอดขายทั้งหมด",
+    "sql": "WITH seller_sales AS (SELECT seller_id, SUM(price) AS total_sales FROM order_items GROUP BY seller_id), ranked AS (SELECT seller_id, total_sales, SUM(total_sales) OVER (ORDER BY total_sales DESC) AS cum_sales, SUM(total_sales) OVER () AS grand_total, ROW_NUMBER() OVER (ORDER BY total_sales DESC) AS rn FROM seller_sales) SELECT MIN(rn) AS num_sellers_for_80pct, ROUND(100.0 * MIN(rn) / (SELECT COUNT(*) FROM seller_sales), 2) AS pct_of_sellers FROM ranked WHERE cum_sales >= 0.8 * grand_total;",
+    "verified": true
+  },
+  {
+    "id": 143,
+    "difficulty": "extra_hard",
+    "question_th": "แสดงคะแนนรีวิวเฉลี่ยของคำสั่งซื้อ เปรียบเทียบระหว่างคำสั่งซื้อที่จัดส่งตรงเวลา กับคำสั่งซื้อที่จัดส่งล่าช้า",
+    "sql": "SELECT CASE WHEN o.order_delivered_customer_date <= o.order_estimated_delivery_date THEN 'on_time' ELSE 'late' END AS delivery_status, AVG(r.review_score) AS avg_review_score, COUNT(*) AS num_orders FROM orders o JOIN order_reviews r ON o.order_id = r.order_id WHERE o.order_status = 'delivered' AND o.order_delivered_customer_date IS NOT NULL GROUP BY delivery_status;",
+    "verified": true
+  },
+  {
+    "id": 144,
+    "difficulty": "extra_hard",
+    "question_th": "แสดงลูกค้า 5 อันดับแรกที่มีระยะเวลาเฉลี่ยระหว่างคำสั่งซื้อ (average days between orders) สั้นที่สุด (ต้องมีคำสั่งซื้ออย่างน้อย 3 ครั้ง)",
+    "sql": "WITH cust_orders AS (SELECT c.customer_unique_id, o.order_purchase_timestamp, LAG(o.order_purchase_timestamp) OVER (PARTITION BY c.customer_unique_id ORDER BY o.order_purchase_timestamp) AS prev_order FROM orders o JOIN customers c ON o.customer_id = c.customer_id), gaps AS (SELECT customer_unique_id, julianday(order_purchase_timestamp) - julianday(prev_order) AS gap_days FROM cust_orders WHERE prev_order IS NOT NULL) SELECT customer_unique_id, AVG(gap_days) AS avg_days_between_orders, COUNT(*)+1 AS num_orders FROM gaps GROUP BY customer_unique_id HAVING COUNT(*)+1 >= 3 ORDER BY avg_days_between_orders ASC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 145,
+    "difficulty": "extra_hard",
+    "question_th": "แสดงหมวดหมู่สินค้า (ภาษาอังกฤษ) ที่มีความสัมพันธ์ระหว่างจำนวนงวดผ่อนชำระเฉลี่ย (avg installments) กับราคาสินค้าเฉลี่ยสูงที่สุด (top 5 by avg price, แสดง avg installments คู่กัน)",
+    "sql": "SELECT t.product_category_name_english AS category, AVG(oi.price) AS avg_price, AVG(op.payment_installments) AS avg_installments FROM order_items oi JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name JOIN order_payments op ON oi.order_id = op.order_id GROUP BY category ORDER BY avg_price DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 146,
+    "difficulty": "extra_hard",
+    "question_th": "แสดง cohort analysis อย่างง่าย: จำนวนลูกค้าที่ซื้อครั้งแรกในแต่ละเดือนของปี 2017 และยังคงกลับมาซื้อซ้ำภายใน 6 เดือนถัดมา",
+    "sql": "WITH first_order AS (SELECT c.customer_unique_id, MIN(o.order_purchase_timestamp) AS cohort_date FROM orders o JOIN customers c ON o.customer_id = c.customer_id GROUP BY c.customer_unique_id), cohort_2017 AS (SELECT customer_unique_id, strftime('%m', cohort_date) AS cohort_month, cohort_date FROM first_order WHERE strftime('%Y', cohort_date) = '2017') SELECT cohort_month, COUNT(*) AS cohort_size, SUM(CASE WHEN EXISTS (SELECT 1 FROM orders o2 JOIN customers c2 ON o2.customer_id = c2.customer_id WHERE c2.customer_unique_id = cohort_2017.customer_unique_id AND o2.order_purchase_timestamp > cohort_2017.cohort_date AND julianday(o2.order_purchase_timestamp) - julianday(cohort_2017.cohort_date) <= 180) THEN 1 ELSE 0 END) AS retained_within_6m FROM cohort_2017 GROUP BY cohort_month ORDER BY cohort_month;",
+    "verified": true
+  },
+  {
+    "id": 147,
+    "difficulty": "extra_hard",
+    "question_th": "หาผู้ขาย 5 อันดับแรกที่มี 'อัตราการเติบโตของยอดขาย' เดือนล่าสุดเทียบเดือนก่อนหน้าสูงที่สุด ในปี 2018 (เทียบเฉพาะ 2 เดือนล่าสุดที่มีข้อมูล)",
+    "sql": "WITH monthly AS (SELECT oi.seller_id, strftime('%Y-%m', o.order_purchase_timestamp) AS ym, SUM(oi.price) AS sales FROM orders o JOIN order_items oi ON o.order_id = oi.order_id WHERE strftime('%Y', o.order_purchase_timestamp) = '2018' GROUP BY oi.seller_id, ym), last_two AS (SELECT seller_id, ym, sales, ROW_NUMBER() OVER (PARTITION BY seller_id ORDER BY ym DESC) AS rn FROM monthly), pivoted AS (SELECT seller_id, MAX(CASE WHEN rn=1 THEN sales END) AS latest_sales, MAX(CASE WHEN rn=2 THEN sales END) AS prev_sales FROM last_two WHERE rn <= 2 GROUP BY seller_id) SELECT seller_id, prev_sales, latest_sales, ROUND(100.0*(latest_sales - prev_sales)/prev_sales, 2) AS growth_pct FROM pivoted WHERE prev_sales IS NOT NULL AND prev_sales > 0 ORDER BY growth_pct DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 148,
+    "difficulty": "extra_hard",
+    "question_th": "แสดงจำนวนคำสั่งซื้อที่ได้รับคะแนนรีวิว 1-2 ดาว โดยจำแนกว่าเป็นเพราะจัดส่งล่าช้าหรือไม่ (delivered late vs on time) เทียบเป็นเปอร์เซ็นต์",
+    "sql": "WITH low_reviews AS (SELECT o.order_id, CASE WHEN o.order_delivered_customer_date > o.order_estimated_delivery_date THEN 'late' ELSE 'on_time' END AS delivery_status FROM orders o JOIN order_reviews r ON o.order_id = r.order_id WHERE r.review_score <= 2 AND o.order_status = 'delivered' AND o.order_delivered_customer_date IS NOT NULL) SELECT delivery_status, COUNT(*) AS num_orders, ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM low_reviews), 2) AS pct FROM low_reviews GROUP BY delivery_status;",
+    "verified": true
+  },
+  {
+    "id": 149,
+    "difficulty": "extra_hard",
+    "question_th": "แสดง 5 อันดับหมวดหมู่สินค้า (ภาษาอังกฤษ) ที่มีส่วนแบ่งยอดขาย (market share) เปลี่ยนแปลงมากที่สุดระหว่างครึ่งปีแรกและครึ่งปีหลังของปี 2018 (ต้องมียอดขายรวมทั้งปีอย่างน้อย 500)",
+    "sql": "WITH half_sales AS (SELECT t.product_category_name_english AS category, CASE WHEN CAST(strftime('%m', o.order_purchase_timestamp) AS INTEGER) <= 6 THEN 'H1' ELSE 'H2' END AS half, SUM(oi.price) AS sales FROM orders o JOIN order_items oi ON o.order_id = oi.order_id JOIN products p ON oi.product_id = p.product_id JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name WHERE strftime('%Y', o.order_purchase_timestamp) = '2018' GROUP BY category, half), pivoted AS (SELECT category, SUM(CASE WHEN half='H1' THEN sales ELSE 0 END) AS h1_sales, SUM(CASE WHEN half='H2' THEN sales ELSE 0 END) AS h2_sales FROM half_sales GROUP BY category) SELECT category, h1_sales, h2_sales, ROUND(100.0*h1_sales/(SELECT SUM(h1_sales) FROM pivoted), 2) AS h1_share_pct, ROUND(100.0*h2_sales/(SELECT SUM(h2_sales) FROM pivoted), 2) AS h2_share_pct FROM pivoted WHERE (h1_sales + h2_sales) >= 500 ORDER BY ABS((100.0*h2_sales/(SELECT SUM(h2_sales) FROM pivoted)) - (100.0*h1_sales/(SELECT SUM(h1_sales) FROM pivoted))) DESC LIMIT 5;",
+    "verified": true
+  },
+  {
+    "id": 150,
+    "difficulty": "extra_hard",
+    "question_th": "แสดงลูกค้าที่ 'churn' (เคยซื้อแต่ไม่ได้ซื้ออีกเลยในช่วง 180 วันสุดท้ายของข้อมูล) มีทั้งหมดกี่คน จากลูกค้าที่มีคำสั่งซื้อก่อนช่วง 180 วันสุดท้าย",
+    "sql": "WITH max_date AS (SELECT MAX(order_purchase_timestamp) AS ref_date FROM orders), last_purchase AS (SELECT c.customer_unique_id, MAX(o.order_purchase_timestamp) AS last_order FROM orders o JOIN customers c ON o.customer_id = c.customer_id GROUP BY c.customer_unique_id) SELECT COUNT(*) AS churned_customers FROM last_purchase, max_date WHERE julianday(max_date.ref_date) - julianday(last_purchase.last_order) > 180;",
+    "verified": true
+  }
+]
