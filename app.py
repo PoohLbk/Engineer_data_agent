@@ -1,60 +1,100 @@
+import io
+import pandas as pd
 import streamlit as st
-import plotly.express as px
 from agent_core import EnterpriseDataAgent
 
-st.set_page_config(page_title="Enterprise Private AI Data Agent", layout="wide")
-
-st.title("🔒 On-Premise Data Agent")
-st.caption("ระบบวิเคราะห์ข้อมูลองค์กรระดับ Enterprise | Fully Offline & Private Network Only")
+st.set_page_config(page_title="Enterprise Data Agent", layout="wide")
 
 @st.cache_resource
-def init_agent():
+def get_agent():
     return EnterpriseDataAgent()
 
-agent = init_agent()
+agent = get_agent()
 
-# Sidebar - Managed Local Tables
-st.sidebar.header("🛡️ Secured Data Sources")
-if agent.registered_tables:
-    for table in agent.registered_tables:
-        st.sidebar.success(f"Isolated Table: `{table}`")
-else:
-    st.sidebar.error("ไม่พบตารางข้อมูล กรุณาเพิ่มไฟล์ CSV/Parquet ในโฟลเดอร์ `data_input/`")
-
-# User Query Form
-user_query = st.text_input("ระบุคำถามภาษาไทยที่ต้องการวิเคราะห์ข้อมูล:", placeholder="เช่น แสดงหมวดหมู่สินค้าที่มียอดขายสูงสุด 5 อันดับแรก")
-
-if st.button("ประมวลผลข้อมูล") and user_query:
-    with st.spinner("Agentกำลังอ่าน Schema และสร้าง SQL..."):
-        result_df, final_sql, logs = agent.execute_with_self_correction(user_query)
-
-    # 1. Executive Summary
-    st.subheader("💡 บทสรุปการวิเคราะห์ (Executive Summary)")
-    if result_df is not None and not result_df.empty:
-        summary = agent.generate_executive_summary(user_query, result_df)
-        st.info(summary)
+with st.sidebar:
+    st.header(" Secured Data Sources")
+    tables = agent.con.execute("SHOW TABLES").fetchall()
+    if tables:
+        for t in tables:
+            st.success(f"Isolated Table: {t[0]}")
     else:
-        st.warning("ระบบไม่สามารถดึงข้อมูลได้หรือไม่มีข้อมูลตรงเงื่อนไข")
+        st.error("ไม่พบตารางข้อมูล")
 
-    # 2. Data Table
-    st.subheader("📋 ตารางข้อมูลผลลัพธ์ (Result Set)")
-    if result_df is not None:
-        st.dataframe(result_df, use_container_width=True)
+st.title(" On-Premise Data Agent")
+st.caption("ระบบวิเคราะห์ข้อมูลองค์กรระดับ Enterprise | Fully Offline & Private Network Only")
 
-        # 3. Dynamic Auto-Visualization
-        if len(result_df.columns) >= 2:
-            st.subheader("📊 การแสดงผลเชิงภาพ (Auto-Visualization)")
-            cols = result_df.columns
-            try:
-                fig = px.bar(result_df, x=cols[0], y=cols[1], title=f"แผนภูมิแสดง {cols[1]} จำแนกตาม {cols[0]}")
-                st.plotly_chart(fig, use_container_width=True)
-            except Exception:
-                st.caption("โครงสร้างข้อมูลชุดนี้ไม่เหมาะสำหรับการสร้างแผนภูมิแท่งอัตโนมัติ")
+# แบ่งหน้าจอเป็น 2 แท็บหลัก
+tab1, tab2 = st.tabs([" AI Query Engine", " Data Schema & Dictionary"])
 
-    # 4. System Developer Audit Logs
-    with st.expander("🔍 Audit Logs & Generated SQL Pipeline (สำหรับงานเทคนิค)"):
-        st.markdown("**Executable SQL Code:**")
-        st.code(final_sql, language="sql")
-        st.markdown("**Agent Self-Correction & Execution History:**")
-        for log in logs:
-            st.text(log)
+with tab1:
+    st.subheader("ระบุคำถามภาษาไทยที่ต้องการวิเคราะห์ข้อมูล:")
+    user_query = st.text_input("คำถาม:", placeholder="เช่น ขอ 5 ประเทศที่มีลูกค้ามากที่สุด พร้อม CAC เฉลี่ย", label_visibility="collapsed")
+
+    if st.button("ประมวลผลข้อมูล", type="primary"):
+        if user_query:
+            with st.spinner("กำลังเขียน SQL และประมวลผลผ่าน DuckDB..."):
+                df_result, final_sql, logs = agent.execute_with_self_correction(user_query)
+
+                st.markdown("###  บทสรุปการวิเคราะห์ (Executive Summary)")
+                summary = agent.generate_executive_summary(user_query, df_result)
+                st.info(summary)
+
+                if df_result is not None and not df_result.empty:
+                    st.markdown("###  ตารางข้อมูลผลลัพธ์ (Result Set)")
+                    st.dataframe(df_result, use_container_width=True)
+
+                    # --- ส่วนแทรกปุ่มดาวน์โหลด CSV และ Excel ---
+                    col_dl1, col_dl2 = st.columns(2)
+                    
+                    # 1. ดาวน์โหลดเป็น CSV (ใช้ utf-8-sig เพื่อรองรับภาษาไทยใน Excel)
+                    csv_data = df_result.to_csv(index=False).encode('utf-8-sig')
+                    col_dl1.download_button(
+                        label=" ดาวน์โหลดผลลัพธ์ (CSV File)",
+                        data=csv_data,
+                        file_name="analyzed_data_export.csv",
+                        mime="text/csv"
+                    )
+
+                    # 2. ดาวน์โหลดเป็น Excel (.xlsx)
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                        df_result.to_excel(writer, index=False, sheet_name='Analyzed_Data')
+                    
+                    col_dl2.download_button(
+                        label="📊 ดาวน์โหลดผลลัพธ์ (Excel File)",
+                        data=buffer.getvalue(),
+                        file_name="analyzed_data_export.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                    # ---------------------------------------------
+
+                    numeric_cols = df_result.select_dtypes(include=['number']).columns.tolist()
+                    if len(numeric_cols) > 0 and len(df_result) > 1:
+                        st.markdown("###  กราฟแสดงผลอัตโนมัติ")
+                        st.bar_chart(df_result.set_index(df_result.columns[0])[numeric_cols[0]])
+
+                with st.expander(" Audit Logs & Generated SQL Pipeline (สำหรับงานเทคนิค)"):
+                    st.code(final_sql, language="sql")
+                    st.text("\n".join(logs))
+
+with tab2:
+    st.subheader(" โครงสร้างตารางข้อมูลและรายละเอียดคอลัมน์ (Data Dictionary)")
+    tables = agent.con.execute("SHOW TABLES").fetchall()
+    if not tables:
+        st.warning("ยังไม่มีตารางในระบบ กรุณาตรวจสอบโฟลเดอร์ data_input/")
+    else:
+        for t in tables:
+            table_name = t[0]
+            st.markdown(f"#### 📁 ตาราง: `{table_name}`")
+            columns_df = agent.con.execute(f"DESCRIBE {table_name}").df()
+            columns_df = columns_df[['column_name', 'column_type']]
+            columns_df.columns = ['ชื่อคอลัมน์ (Column)', 'ชนิดข้อมูล (Data Type)']
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                st.markdown("**รายการคอลัมน์ในตาราง:**")
+                st.dataframe(columns_df, use_container_width=True)
+            with col2:
+                st.markdown("**ตัวอย่างข้อมูล 5 บรรทัดแรก (Data Preview):**")
+                preview_df = agent.con.execute(f"SELECT * FROM {table_name} LIMIT 5").df()
+                st.dataframe(preview_df, use_container_width=True)
+            st.divider()
