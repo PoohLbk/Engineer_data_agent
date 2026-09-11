@@ -4,3 +4,9 @@ pandas==2.2.3
 plotly==5.24.1
 streamlit==1.40.1
 python-dotenv==1.0.1
+streamlit
+pandas
+duckdb
+google-genai
+python-dotenv
+openpyxl
