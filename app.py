@@ -6,16 +6,10 @@ from agent_core import EnterpriseDataAgent
 st.set_page_config(page_title="Enterprise Data Agent", layout="wide")
 
 # โหลด Agent และแคชไว้ในเซิร์ฟเวอร์เพื่อความรวดเร็ว
+
 @st.cache_resource
 def get_agent():
-    api_key = None
-    try:
-        if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
-            api_key = st.secrets["GEMINI_API_KEY"]
-    except Exception:
-        api_key = None
-        
-    return EnterpriseDataAgent(api_key=api_key) if api_key else EnterpriseDataAgent()
+    return EnterpriseDataAgent()
 
 agent = get_agent()
 
