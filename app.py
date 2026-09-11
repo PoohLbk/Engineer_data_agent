@@ -5,14 +5,19 @@ from agent_core import EnterpriseDataAgent
 
 st.set_page_config(page_title="Enterprise Data Agent", layout="wide")
 
+# รองรับการดึง API Key ทั้งจาก Streamlit Cloud Secrets และไฟล์ .env ในเครื่อง Local
 @st.cache_resource
 def get_agent():
-    return EnterpriseDataAgent()
+    api_key = None
+    if "GEMINI_API_KEY" in st.secrets:
+        api_key = st.secrets["GEMINI_API_KEY"]
+    return EnterpriseDataAgent(api_key=api_key) if api_key else EnterpriseDataAgent()
 
 agent = get_agent()
 
+# Sidebar
 with st.sidebar:
-    st.header(" Secured Data Sources")
+    st.header("🛡️ Secured Data Sources")
     tables = agent.con.execute("SHOW TABLES").fetchall()
     if tables:
         for t in tables:
@@ -20,12 +25,15 @@ with st.sidebar:
     else:
         st.error("ไม่พบตารางข้อมูล")
 
-st.title(" On-Premise Data Agent")
+st.title("🔒 On-Premise Data Agent")
 st.caption("ระบบวิเคราะห์ข้อมูลองค์กรระดับ Enterprise | Fully Offline & Private Network Only")
 
-# แบ่งหน้าจอเป็น 2 แท็บหลัก
-tab1, tab2 = st.tabs([" AI Query Engine", " Data Schema & Dictionary"])
+# UI 2 แท็บหลัก
+tab1, tab2 = st.tabs(["💬 AI Query Engine", "📊 Data Schema & Dictionary"])
 
+# -------------------------------------------------------------
+# TAB 1: AI Query Engine & Export Features
+# -------------------------------------------------------------
 with tab1:
     st.subheader("ระบุคำถามภาษาไทยที่ต้องการวิเคราะห์ข้อมูล:")
     user_query = st.text_input("คำถาม:", placeholder="เช่น ขอ 5 ประเทศที่มีลูกค้ามากที่สุด พร้อม CAC เฉลี่ย", label_visibility="collapsed")
@@ -35,27 +43,29 @@ with tab1:
             with st.spinner("กำลังเขียน SQL และประมวลผลผ่าน DuckDB..."):
                 df_result, final_sql, logs = agent.execute_with_self_correction(user_query)
 
-                st.markdown("###  บทสรุปการวิเคราะห์ (Executive Summary)")
+                # Executive Summary
+                st.markdown("### 💡 บทสรุปการวิเคราะห์ (Executive Summary)")
                 summary = agent.generate_executive_summary(user_query, df_result)
                 st.info(summary)
 
+                # Data Table & Chart
                 if df_result is not None and not df_result.empty:
-                    st.markdown("###  ตารางข้อมูลผลลัพธ์ (Result Set)")
+                    st.markdown("### 📋 ตารางข้อมูลผลลัพธ์ (Result Set)")
                     st.dataframe(df_result, use_container_width=True)
 
-                    # --- ส่วนแทรกปุ่มดาวน์โหลด CSV และ Excel ---
+                    # ปุ่ม Export ข้อมูล 2 รูปแบบ
                     col_dl1, col_dl2 = st.columns(2)
                     
-                    # 1. ดาวน์โหลดเป็น CSV (ใช้ utf-8-sig เพื่อรองรับภาษาไทยใน Excel)
+                    # 1. Export CSV
                     csv_data = df_result.to_csv(index=False).encode('utf-8-sig')
                     col_dl1.download_button(
-                        label=" ดาวน์โหลดผลลัพธ์ (CSV File)",
+                        label="📥 ดาวน์โหลดผลลัพธ์ (CSV File)",
                         data=csv_data,
                         file_name="analyzed_data_export.csv",
                         mime="text/csv"
                     )
 
-                    # 2. ดาวน์โหลดเป็น Excel (.xlsx)
+                    # 2. Export Excel (.xlsx)
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                         df_result.to_excel(writer, index=False, sheet_name='Analyzed_Data')
@@ -66,19 +76,23 @@ with tab1:
                         file_name="analyzed_data_export.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
-                    # ---------------------------------------------
 
+                    # Auto Chart
                     numeric_cols = df_result.select_dtypes(include=['number']).columns.tolist()
                     if len(numeric_cols) > 0 and len(df_result) > 1:
-                        st.markdown("###  กราฟแสดงผลอัตโนมัติ")
+                        st.markdown("### 📈 กราฟแสดงผลอัตโนมัติ")
                         st.bar_chart(df_result.set_index(df_result.columns[0])[numeric_cols[0]])
 
-                with st.expander(" Audit Logs & Generated SQL Pipeline (สำหรับงานเทคนิค)"):
+                # Audit Logs
+                with st.expander("🔍 Audit Logs & Generated SQL Pipeline (สำหรับงานเทคนิค)"):
                     st.code(final_sql, language="sql")
                     st.text("\n".join(logs))
 
+# -------------------------------------------------------------
+# TAB 2: Data Schema Explorer
+# -------------------------------------------------------------
 with tab2:
-    st.subheader(" โครงสร้างตารางข้อมูลและรายละเอียดคอลัมน์ (Data Dictionary)")
+    st.subheader("📊 โครงสร้างตารางข้อมูลและรายละเอียดคอลัมน์ (Data Dictionary)")
     tables = agent.con.execute("SHOW TABLES").fetchall()
     if not tables:
         st.warning("ยังไม่มีตารางในระบบ กรุณาตรวจสอบโฟลเดอร์ data_input/")
@@ -89,6 +103,7 @@ with tab2:
             columns_df = agent.con.execute(f"DESCRIBE {table_name}").df()
             columns_df = columns_df[['column_name', 'column_type']]
             columns_df.columns = ['ชื่อคอลัมน์ (Column)', 'ชนิดข้อมูล (Data Type)']
+            
             col1, col2 = st.columns([1, 1])
             with col1:
                 st.markdown("**รายการคอลัมน์ในตาราง:**")
