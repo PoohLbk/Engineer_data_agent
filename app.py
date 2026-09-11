@@ -5,12 +5,16 @@ from agent_core import EnterpriseDataAgent
 
 st.set_page_config(page_title="Enterprise Data Agent", layout="wide")
 
-# รองรับการดึง API Key ทั้งจาก Streamlit Cloud Secrets และไฟล์ .env ในเครื่อง Local
+# โหลด Agent และแคชไว้ในเซิร์ฟเวอร์เพื่อความรวดเร็ว
 @st.cache_resource
 def get_agent():
     api_key = None
-    if "GEMINI_API_KEY" in st.secrets:
-        api_key = st.secrets["GEMINI_API_KEY"]
+    try:
+        if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
+            api_key = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        api_key = None
+        
     return EnterpriseDataAgent(api_key=api_key) if api_key else EnterpriseDataAgent()
 
 agent = get_agent()
@@ -28,7 +32,6 @@ with st.sidebar:
 st.title("🔒 On-Premise Data Agent")
 st.caption("ระบบวิเคราะห์ข้อมูลองค์กรระดับ Enterprise | Fully Offline & Private Network Only")
 
-# UI 2 แท็บหลัก
 tab1, tab2 = st.tabs(["💬 AI Query Engine", "📊 Data Schema & Dictionary"])
 
 # -------------------------------------------------------------
@@ -43,20 +46,16 @@ with tab1:
             with st.spinner("กำลังเขียน SQL และประมวลผลผ่าน DuckDB..."):
                 df_result, final_sql, logs = agent.execute_with_self_correction(user_query)
 
-                # Executive Summary
                 st.markdown("### 💡 บทสรุปการวิเคราะห์ (Executive Summary)")
                 summary = agent.generate_executive_summary(user_query, df_result)
                 st.info(summary)
 
-                # Data Table & Chart
                 if df_result is not None and not df_result.empty:
                     st.markdown("### 📋 ตารางข้อมูลผลลัพธ์ (Result Set)")
                     st.dataframe(df_result, use_container_width=True)
 
-                    # ปุ่ม Export ข้อมูล 2 รูปแบบ
                     col_dl1, col_dl2 = st.columns(2)
                     
-                    # 1. Export CSV
                     csv_data = df_result.to_csv(index=False).encode('utf-8-sig')
                     col_dl1.download_button(
                         label="📥 ดาวน์โหลดผลลัพธ์ (CSV File)",
@@ -65,7 +64,6 @@ with tab1:
                         mime="text/csv"
                     )
 
-                    # 2. Export Excel (.xlsx)
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                         df_result.to_excel(writer, index=False, sheet_name='Analyzed_Data')
@@ -77,13 +75,11 @@ with tab1:
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
 
-                    # Auto Chart
                     numeric_cols = df_result.select_dtypes(include=['number']).columns.tolist()
                     if len(numeric_cols) > 0 and len(df_result) > 1:
                         st.markdown("### 📈 กราฟแสดงผลอัตโนมัติ")
                         st.bar_chart(df_result.set_index(df_result.columns[0])[numeric_cols[0]])
 
-                # Audit Logs
                 with st.expander("🔍 Audit Logs & Generated SQL Pipeline (สำหรับงานเทคนิค)"):
                     st.code(final_sql, language="sql")
                     st.text("\n".join(logs))
@@ -103,7 +99,6 @@ with tab2:
             columns_df = agent.con.execute(f"DESCRIBE {table_name}").df()
             columns_df = columns_df[['column_name', 'column_type']]
             columns_df.columns = ['ชื่อคอลัมน์ (Column)', 'ชนิดข้อมูล (Data Type)']
-            
             col1, col2 = st.columns([1, 1])
             with col1:
                 st.markdown("**รายการคอลัมน์ในตาราง:**")
