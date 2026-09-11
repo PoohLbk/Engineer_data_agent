@@ -1,4 +1,5 @@
 streamlit
+ollama
 pandas
 duckdb
 google-genai
