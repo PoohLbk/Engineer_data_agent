@@ -1,4 +1,3 @@
-import os
 import duckdb
 
 class EnterpriseDataAgent:
@@ -23,6 +22,3 @@ class EnterpriseDataAgent:
                 self.con.execute(f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT * FROM '{url}'")
             except Exception as e:
                 print(f"Error loading {table_name}: {e}")
-
-        # โหลดไฟล์ local เพิ่มเติม (ถ้ามี)
-        self._load_local_data()
