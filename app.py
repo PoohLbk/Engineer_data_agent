@@ -420,7 +420,7 @@ tab1, tab2 = st.tabs(["💬 AI Query Engine", "🔍 Data Schema Explorer"])
 with tab1:
     user_query = st.text_input("พิมพ์คำถามของคุณที่นี่ (เช่น: ขอ 5 อันดับสินค้าที่มียอดขายรวมสูงสุด):")
 
-    if st.button("ประมวลผลคำสั่ง"):
+    if st.button("ประมวลผลคำสั่ง", type="primary"):
         if user_query:
             with st.spinner("กำลังสร้างคำสั่ง SQL และดึงข้อมูล..."):
                 df_result, final_sql, logs = agent.execute_with_self_correction(user_query)
