@@ -22,8 +22,8 @@ class EnterpriseDataAgent:
             self.client = None
             print("Warning: GEMINI_API_KEY not found.")
 
-        # เลือกใช้โมเดลรุ่นใหม่ที่รองรับ google-genai SDK โดยตรง
-        self.model_name = "gemini-2.0-flash"
+        # อัปเดตชื่อโมเดลเป็นรุ่นล่าสุดที่ API รองรับ
+        self.model_name = "gemini-3.6-flash"
 
         # 3. เชื่อมต่อ DuckDB ใน Memory
         self.con = duckdb.connect(database=':memory:')
@@ -72,7 +72,6 @@ class EnterpriseDataAgent:
         """
         
         try:
-            # เรียกใช้ด้วยโมเดล gemini-2.0-flash
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt
