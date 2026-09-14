@@ -8,7 +8,7 @@ from google import genai
 # ==========================================
 class EnterpriseDataAgent:
     def __init__(self):
-        # 1. ดึง GEMINI_API_KEY จาก Streamlit Secrets หรือ Environment Variable
+        # 1. ดึง GEMINI_API_KEY
         api_key = None
         try:
             if "GEMINI_API_KEY" in st.secrets:
@@ -18,7 +18,7 @@ class EnterpriseDataAgent:
         except Exception:
             api_key = os.environ.get("GEMINI_API_KEY")
 
-        # 2. เริ่มต้นสร้าง Gemini Client
+        # 2. สร้าง Gemini Client
         if api_key:
             self.client = genai.Client(api_key=api_key)
         else:
@@ -32,7 +32,7 @@ class EnterpriseDataAgent:
         # 3. เชื่อมต่อ DuckDB ใน Memory
         self.con = duckdb.connect(database=':memory:')
         
-        # 4. โหลดข้อมูลแบบ VIEW (Lazy Load ช่วยให้เปิดแอปได้เร็ว ไม่ค้างหน้าขาว)
+        # 4. โหลดข้อมูลแบบ VIEW (Lazy Load ช่วยให้เปิดแอปได้เร็ว)
         base_url = "https://github.com/PoohLbk/Engineer_data_agent/releases/download/v1.0"
         
         files_to_load = {
@@ -137,7 +137,6 @@ class EnterpriseDataAgent:
 # ==========================================
 st.set_page_config(page_title="Enterprise Data Agent", layout="wide")
 
-# แคชออบเจกต์ agent เพื่อป้องกันการเชื่อมต่อ DuckDB ใหม่ทุกครั้งที่เปลี่ยนหน้า/กดปุ่ม
 @st.cache_resource
 def load_agent():
     return EnterpriseDataAgent()
@@ -147,7 +146,6 @@ with st.spinner("กำลังเชื่อมต่อฐานข้อม
 
 st.title("Enterprise Data Agent")
 
-# สร้าง Tab สำหรับแยกหน้าการทำงาน
 tab1, tab2 = st.tabs(["💬 AI Query Engine", "🔍 Data Schema Explorer"])
 
 with tab1:
@@ -175,16 +173,28 @@ with tab1:
                     st.write(log)
 
 with tab2:
-    st.subheader(" Schema ของฐานข้อมูลทั้งหมด")
-    search_term = st.text_input("ค้นหาชื่อตาราง หรือ ชื่อคอลัมน์:")
+    st.subheader("📋 Schema และตัวอย่างข้อมูลของฐานข้อมูลทั้งหมด")
+    search_term = st.text_input("🔍 ค้นหาชื่อตาราง หรือ ชื่อคอลัมน์:")
     
     tables = agent.con.execute("SHOW TABLES").fetchall()
     for t in tables:
         t_name = t[0]
         cols = agent.con.execute(f"DESCRIBE {t_name}").fetchall()
         
-        # ตรวจสอบการค้นหา Search Term
         col_names = [c[0] for c in cols]
         if search_term.lower() in t_name.lower() or any(search_term.lower() in c.lower() for c in col_names):
-            with st.expander(f"📌 Table: {t_name}"):
-                st.table([{"Column": c[0], "Type": c[1]} for c in cols])
+            with st.expander(f"📌 Table: {t_name}", expanded=False):
+                # 1. แสดง Column & Data Type
+                st.markdown("**📌 Data Types & Schema:**")
+                st.dataframe(
+                    [{"Column Name": c[0], "Data Type": c[1]} for c in cols],
+                    use_container_width=True
+                )
+                
+                # 2. แสดงตัวอย่างตารางข้อมูล (Top 3 rows)
+                st.markdown("**👀 Sample Data (Top 3 rows):**")
+                try:
+                    sample_df = agent.con.execute(f"SELECT * FROM {t_name} LIMIT 3").df()
+                    st.dataframe(sample_df, use_container_width=True)
+                except Exception as e:
+                    st.error(f"ไม่สามารถโหลดตัวอย่างข้อมูลได้: {e}")
