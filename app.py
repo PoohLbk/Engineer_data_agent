@@ -79,26 +79,50 @@ with tab1:
                     st.text("\n".join(logs))
 
 # -------------------------------------------------------------
-# TAB 2: Data Schema Explorer
+# TAB 2: Data Schema Explorer (พร้อมช่องค้นหา Search Box)
 # -------------------------------------------------------------
 with tab2:
     st.subheader("📊 โครงสร้างตารางข้อมูลและรายละเอียดคอลัมน์ (Data Dictionary)")
+    
     tables = agent.con.execute("SHOW TABLES").fetchall()
     if not tables:
-        st.warning("ยังไม่มีตารางในระบบ กรุณาตรวจสอบโฟลเดอร์ data_input/")
+        st.warning("ยังไม่มีตารางในระบบ กรุณาตรวจสอบการเชื่อมต่อข้อมูล")
     else:
-        for t in tables:
-            table_name = t[0]
-            st.markdown(f"#### 📁 ตาราง: `{table_name}`")
-            columns_df = agent.con.execute(f"DESCRIBE {table_name}").df()
-            columns_df = columns_df[['column_name', 'column_type']]
-            columns_df.columns = ['ชื่อคอลัมน์ (Column)', 'ชนิดข้อมูล (Data Type)']
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                st.markdown("**รายการคอลัมน์ในตาราง:**")
-                st.dataframe(columns_df, use_container_width=True)
-            with col2:
-                st.markdown("**ตัวอย่างข้อมูล 5 บรรทัดแรก (Data Preview):**")
-                preview_df = agent.con.execute(f"SELECT * FROM {table_name} LIMIT 5").df()
-                st.dataframe(preview_df, use_container_width=True)
-            st.divider()
+        # 1. เพิ่มช่องค้นหาชื่อตาราง หรือ ชื่อคอลัมน์
+        search_term = st.text_input(
+            "🔍 ค้นหาชื่อตารางหรือคอลัมน์:", 
+            placeholder="พิมพ์ชื่อตาราง เช่น customer หรือ order...",
+            key="schema_search"
+        ).strip().lower()
+
+        table_list = [t[0] for t in tables]
+        
+        # 2. กรองเฉพาะตารางที่ตรงกับคำค้นหา
+        if search_term:
+            filtered_tables = [t for t in table_list if search_term in t.lower()]
+        else:
+            filtered_tables = table_list
+
+        st.caption(f"พบทั้งหมด {len(filtered_tables)} ตาราง")
+
+        # 3. แสดงผลตารางที่ผ่านการกรอง
+        if not filtered_tables:
+            st.info("ไม่พบตารางข้อมูลที่ตรงกับคำค้นหา")
+        else:
+            for table_name in filtered_tables:
+                st.markdown(f"#### 📁 ตาราง: `{table_name}`")
+                
+                # ดึงโครงสร้างคอลัมน์
+                columns_df = agent.con.execute(f"DESCRIBE {table_name}").df()
+                columns_df = columns_df[['column_name', 'column_type']]
+                columns_df.columns = ['ชื่อคอลัมน์ (Column)', 'ชนิดข้อมูล (Data Type)']
+                
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    st.markdown("**รายการคอลัมน์ในตาราง:**")
+                    st.dataframe(columns_df, use_container_width=True)
+                with col2:
+                    st.markdown("**ตัวอย่างข้อมูล 5 บรรทัดแรก (Data Preview):**")
+                    preview_df = agent.con.execute(f"SELECT * FROM {table_name} LIMIT 5").df()
+                    st.dataframe(preview_df, use_container_width=True)
+                st.divider()
