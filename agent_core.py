@@ -66,3 +66,36 @@ class EnterpriseDataAgent:
             error_msg = f"Execution Error: {str(e)}"
             logs.append(error_msg)
             return None, "", logs
+    def generate_executive_summary(self, user_query, df_result):
+        """
+        ฟังก์ชันใช้ Gemini สรุปผลลัพธ์ข้อมูลจาก DataFrame ให้อยู่ในรูปแบบคำอธิบายสำหรับผู้บริหาร
+        """
+        if df_result is None or df_result.empty:
+            return "ไม่พบข้อมูลสำหรับสรุปผลลัพธ์"
+
+        # แปลงข้อมูลผลลัพธ์เป็นข้อความ Text/Markdown แบบย่อ (สูงสุด 20 บรรทัดเพื่อไม่ให้ Token เกิน)
+        data_preview = df_result.head(20).to_string(index=False)
+        
+        prompt = f"""
+        คุณเป็น Data Analyst ผู้เชี่ยวชาญ กรุณาสรุปผลลัพธ์จากข้อมูลด้านล่างนี้ เพื่อตอบคำถามของผู้ใช้:
+
+        คำถามของผู้ใช้: "{user_query}"
+
+        ผลลัพธ์ข้อมูลที่ได้จาก Database:
+        {data_preview}
+
+        คำแนะนำในการตอบ:
+        1. อธิบายคำตอบหลักให้ชัดเจน ตรงประเด็น
+        2. สรุปจุดสำคัญหรือ Insight ที่น่าสนใจจากข้อมูล เป็นข้อๆ (Bullet points)
+        3. ตอบเป็นภาษาไทยที่สุภาพ เข้าใจง่าย และเป็นทางการ
+        """
+        
+        try:
+            # เรียกใช้ Gemini สรุปผล
+            response = self.client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
+            return response.text.strip()
+        except Exception as e:
+            return f"เกิดข้อผิดพลาดในการสร้างสรุปผลลัพธ์: {str(e)}"
