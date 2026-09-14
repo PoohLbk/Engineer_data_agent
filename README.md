@@ -1,10 +1,10 @@
-# 🔒 Local Enterprise Data Engineering & Analytics Agent
+#  Local Enterprise Data Engineering & Analytics Agent
 
 An end-to-end, privacy-focused Autonomous AI Agent pipeline designed to automate Data Engineering and Analytics tasks locally. Built for high data privacy and security requirements, this project transforms natural Thai language queries into optimized DuckDB SQL code, executes execution loops, handles automated self-correction, and visualizes analytical results without sending data to public clouds.
 
 ---
 
-## 🌟 Key Features
+##  Key Features
 
 * **100% Private & Offline Execution**: Operates completely local via Ollama and in-memory DuckDB engine. No data leaks or cloud API dependencies.
 * **Automated Data Ingestion**: Automatically reads and inspects CSV/Parquet file schema upon dropping into the watched folder.
@@ -14,7 +14,7 @@ An end-to-end, privacy-focused Autonomous AI Agent pipeline designed to automate
 
 ---
 
-## 🏗️ System Architecture
+##  System Architecture
 
 ```text
   [ User Interface (Streamlit) ]
