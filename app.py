@@ -25,9 +25,9 @@ class EnterpriseDataAgent:
             self.client = None
             print("Warning: GEMINI_API_KEY not found.")
 
-        # ตั้งค่าโมเดลหลักและโมเดลสำรอง
-        self.primary_model = "gemini-1.5-flash"
-        self.fallback_model = "gemini-1.5-pro"
+        # ใช้โมเดลมาตรฐานที่ใช้งานได้จริงผ่าน API 100%
+        self.primary_model = "gemini-2.5-flash"
+        self.fallback_model = "gemini-2.0-flash"
 
         # 3. เชื่อมต่อ DuckDB ใน Memory
         self.con = duckdb.connect(database=':memory:')
@@ -50,7 +50,7 @@ class EnterpriseDataAgent:
                 print(f"Error loading {table_name}: {e}")
 
     def _call_gemini_with_fallback(self, prompt):
-        """เรียกใช้งาน API หากโมเดลหลักค้าง/หนาแน่น จะสลับไปใช้โมเดลสำรองให้อัตโนมัติ"""
+        """เรียกใช้งาน API หากโมเดลหลักติด Error ให้สลับไปใช้โมเดลสำรองอัตโนมัติ"""
         try:
             response = self.client.models.generate_content(
                 model=self.primary_model,
