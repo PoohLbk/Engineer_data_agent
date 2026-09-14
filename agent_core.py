@@ -16,7 +16,7 @@ class EnterpriseDataAgent:
         except Exception:
             api_key = os.environ.get("GEMINI_API_KEY")
 
-        # 2. เริ่มต้นสร้าง Gemini Client โดยระบุ api_version='v1'
+        # 2. เริ่มต้นสร้าง Gemini Client
         if api_key:
             self.client = genai.Client(
                 api_key=api_key,
@@ -26,7 +26,7 @@ class EnterpriseDataAgent:
             self.client = None
             print("Warning: GEMINI_API_KEY not found.")
 
-        # 3. เชื่อมต่อ DuckDB
+        # 3. เชื่อมต่อ DuckDB ใน Memory
         self.con = duckdb.connect(database=':memory:')
         
         # 4. โหลดไฟล์ข้อมูล 5 ตารางจาก GitHub Release v1.0
@@ -73,7 +73,7 @@ class EnterpriseDataAgent:
         
         try:
             response = self.client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-1.5-flash',
                 contents=prompt
             )
             sql_query = response.text.strip().replace("```sql", "").replace("```", "").strip()
@@ -112,7 +112,7 @@ class EnterpriseDataAgent:
         
         try:
             response = self.client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-1.5-flash',
                 contents=prompt
             )
             return response.text.strip()
