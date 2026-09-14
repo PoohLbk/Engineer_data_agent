@@ -122,7 +122,7 @@ class EnterpriseDataAgent:
             )
             return response.text
 
-    def execute_with_self_correction(self, user_query):
+    def execute_with_self_correction(self, user_query, max_attempts=3):
         logs = [f"Received query: {user_query}"]
 
         if not self.client:
@@ -137,7 +137,7 @@ class EnterpriseDataAgent:
             col_str = ", ".join([f"{c[0]} ({c[1]})" for c in cols])
             schema_info += f"Table {t_name}: {col_str}\n"
 
-        prompt = f"""
+        base_prompt = f"""
         You are a DuckDB SQL expert. Given the following schema:
         {schema_info}
 
@@ -147,18 +147,42 @@ class EnterpriseDataAgent:
         Return ONLY the raw SQL query without codeblock formatting or explanations.
         """
 
-        try:
-            raw_response = self._call_gemini_with_fallback(prompt)
-            sql_query = raw_response.strip().replace("```sql", "").replace("```", "").strip()
-            logs.append(f"Generated SQL: {sql_query}")
+        prompt = base_prompt
+        sql_query = ""
+        last_error = None
 
-            df_result = self.con.execute(sql_query).df()
-            return df_result, sql_query, logs
+        for attempt in range(1, max_attempts + 1):
+            try:
+                raw_response = self._call_gemini_with_fallback(prompt)
+                sql_query = raw_response.strip().replace("```sql", "").replace("```", "").strip()
+                logs.append(f"[Attempt {attempt}] Generated SQL: {sql_query}")
 
-        except Exception as e:
-            error_msg = f"Execution Error: {str(e)}"
-            logs.append(error_msg)
-            return None, "", logs
+                df_result = self.con.execute(sql_query).df()
+                logs.append(f"[Attempt {attempt}] Success.")
+                return df_result, sql_query, logs
+
+            except Exception as e:
+                last_error = str(e)
+                logs.append(f"[Attempt {attempt}] Execution Error: {last_error}")
+
+                # ป้อน error กลับไปให้ Gemini แก้ SQL ในรอบถัดไป (Self-Correction)
+                prompt = f"""
+                {base_prompt}
+
+                คำสั่ง SQL ที่คุณเขียนก่อนหน้านี้:
+                {sql_query}
+
+                รันแล้วเจอ error นี้:
+                {last_error}
+
+                กรุณาแก้ไขคำสั่ง SQL ให้ถูกต้องตาม schema ที่ให้ไว้ข้างต้น
+                (เช่น ถ้า error บอกว่าไม่มีตารางนี้ ให้ตรวจดู schema แล้วใช้ชื่อตารางที่ถูกต้องจริง ๆ)
+                Return ONLY the raw SQL query without codeblock formatting or explanations.
+                """
+
+        logs.append(f"ล้มเหลวหลังจากพยายาม {max_attempts} ครั้ง: {last_error}")
+        return None, sql_query, logs
+
 
     def generate_executive_summary(self, user_query, df_result):
         if df_result is None or df_result.empty:
