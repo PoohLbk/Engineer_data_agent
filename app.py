@@ -218,6 +218,185 @@ class EnterpriseDataAgent:
 # ==========================================
 st.set_page_config(page_title="Enterprise Data Agent", layout="wide")
 
+# ------------------------------------------
+# Design tokens — "boardroom" executive theme
+# ------------------------------------------
+COLOR_BG = "#0F1620"          # deep navy-charcoal base
+COLOR_SURFACE = "#161F2E"     # card / panel surface
+COLOR_BORDER = "#28344A"      # hairline borders
+COLOR_TEXT = "#E8ECF3"        # primary text
+COLOR_TEXT_MUTED = "#8B9BB4"  # secondary text
+COLOR_ACCENT = "#C9A227"      # muted brass/gold — the one bold accent
+COLOR_ACCENT_SOFT = "#3FA796" # muted teal — secondary/positive signal
+PLOTLY_COLORWAY = [COLOR_ACCENT, COLOR_ACCENT_SOFT, "#7D8FB3", "#C1584C", "#5B7FA6"]
+
+CUSTOM_CSS = f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
+    background-color: {COLOR_BG} !important;
+    color: {COLOR_TEXT};
+    font-family: 'IBM Plex Sans', sans-serif;
+}}
+[data-testid="stHeader"] {{ background-color: transparent !important; }}
+[data-testid="stAppViewContainer"] .main .block-container {{
+    padding-top: 2.2rem;
+    max-width: 1180px;
+}}
+
+h1, h2, h3 {{
+    font-family: 'Source Serif 4', serif !important;
+    color: {COLOR_TEXT} !important;
+    font-weight: 600 !important;
+}}
+
+.exec-header {{ margin-bottom: 1.6rem; }}
+.exec-header .eyebrow {{
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.82rem;
+    color: {COLOR_ACCENT_SOFT};
+    margin-bottom: 2px;
+}}
+.exec-header h1 {{
+    font-size: 2.1rem !important;
+    margin: 0 0 4px 0 !important;
+}}
+.exec-header p {{
+    color: {COLOR_TEXT_MUTED};
+    font-size: 0.95rem;
+    margin: 0;
+}}
+
+/* KPI card grid */
+.kpi-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 14px;
+    margin: 4px 0 26px 0;
+}}
+.kpi-card {{
+    background: {COLOR_SURFACE};
+    border: 1px solid {COLOR_BORDER};
+    border-left: 3px solid {COLOR_ACCENT};
+    border-radius: 6px;
+    padding: 16px 20px;
+}}
+.kpi-card .kpi-label {{
+    font-size: 0.76rem;
+    color: {COLOR_TEXT_MUTED};
+    margin-bottom: 6px;
+}}
+.kpi-card .kpi-value {{
+    font-family: 'Source Serif 4', serif;
+    font-size: 1.75rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.15;
+    color: {COLOR_TEXT};
+}}
+.kpi-card .kpi-sub {{
+    font-size: 0.74rem;
+    color: {COLOR_ACCENT_SOFT};
+    margin-top: 6px;
+}}
+
+/* Inputs, buttons, tabs, expanders, dataframe */
+[data-testid="stTextInput"] input {{
+    background-color: {COLOR_SURFACE} !important;
+    color: {COLOR_TEXT} !important;
+    border: 1px solid {COLOR_BORDER} !important;
+    border-radius: 6px !important;
+}}
+[data-testid="stButton"] button {{
+    background-color: {COLOR_ACCENT} !important;
+    color: #1A1406 !important;
+    border: none !important;
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    padding: 0.5rem 1.4rem !important;
+}}
+[data-testid="stButton"] button:hover {{
+    background-color: #DDB542 !important;
+    color: #1A1406 !important;
+}}
+[data-testid="stTabs"] button [data-testid="stMarkdownContainer"] p {{
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: {COLOR_TEXT_MUTED};
+}}
+[data-testid="stTabs"] [aria-selected="true"] [data-testid="stMarkdownContainer"] p {{
+    color: {COLOR_ACCENT} !important;
+}}
+[data-testid="stExpander"] {{
+    background-color: {COLOR_SURFACE};
+    border: 1px solid {COLOR_BORDER} !important;
+    border-radius: 6px !important;
+}}
+[data-testid="stDataFrame"] {{
+    border: 1px solid {COLOR_BORDER};
+    border-radius: 6px;
+}}
+[data-testid="stAlert"] {{
+    background-color: {COLOR_SURFACE} !important;
+    border: 1px solid {COLOR_BORDER} !important;
+    color: {COLOR_TEXT} !important;
+}}
+</style>
+"""
+
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+
+def format_kpi_number(x):
+    """จัดรูปแบบตัวเลขให้อ่านง่ายแบบสรุปผู้บริหาร (K/M)"""
+    if x is None:
+        return "-"
+    abs_x = abs(x)
+    if abs_x >= 1_000_000:
+        return f"{x/1_000_000:,.2f}M"
+    if abs_x >= 1_000:
+        return f"{x:,.0f}"
+    return f"{x:,.2f}"
+
+
+def compute_kpis(df: pd.DataFrame):
+    """สร้างชุด KPI จากผลลัพธ์ query: จำนวนแถว + ผลรวม/ค่าเฉลี่ยของคอลัมน์ตัวเลข (สูงสุด 3 คอลัมน์แรก)"""
+    kpis = [("จำนวนแถวผลลัพธ์", f"{len(df):,}", "")]
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    for col in numeric_cols[:3]:
+        total = df[col].sum()
+        avg = df[col].mean()
+        kpis.append((f"รวม {col}", format_kpi_number(total), f"เฉลี่ย {format_kpi_number(avg)} / แถว"))
+    return kpis[:4]
+
+
+def render_kpi_cards(df: pd.DataFrame):
+    kpis = compute_kpis(df)
+    cards_html = "".join(
+        f"""<div class="kpi-card">
+                <div class="kpi-label">{label}</div>
+                <div class="kpi-value">{value}</div>
+                <div class="kpi-sub">{sub}</div>
+            </div>"""
+        for label, value, sub in kpis
+    )
+    st.markdown(f'<div class="kpi-grid">{cards_html}</div>', unsafe_allow_html=True)
+
+
+def style_chart_theme(fig):
+    """ปรับโทนกราฟ Plotly ให้เข้ากับธีม Dashboard"""
+    fig.update_layout(
+        paper_bgcolor=COLOR_SURFACE,
+        plot_bgcolor=COLOR_SURFACE,
+        font=dict(family="IBM Plex Sans, sans-serif", color=COLOR_TEXT),
+        title_font=dict(family="Source Serif 4, serif", size=18, color=COLOR_TEXT),
+        colorway=PLOTLY_COLORWAY,
+        margin=dict(t=56, l=10, r=10, b=10),
+    )
+    fig.update_xaxes(gridcolor=COLOR_BORDER, zerolinecolor=COLOR_BORDER)
+    fig.update_yaxes(gridcolor=COLOR_BORDER, zerolinecolor=COLOR_BORDER)
+    return fig
+
+
 @st.cache_resource
 def load_agent():
     return EnterpriseDataAgent()
@@ -225,7 +404,16 @@ def load_agent():
 with st.spinner("กำลังเชื่อมต่อฐานข้อมูล และสร้าง Data Engine Views..."):
     agent = load_agent()
 
-st.title("Enterprise Data Agent")
+st.markdown(
+    """
+    <div class="exec-header">
+        <div class="eyebrow">Executive Data Dashboard</div>
+        <h1>Enterprise Data Agent</h1>
+        <p>ถามคำถามเป็นภาษาธรรมชาติ ระบบแปลงเป็น SQL, สรุปผล และแสดงกราฟให้อัตโนมัติ</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 tab1, tab2 = st.tabs(["💬 AI Query Engine", "🔍 Data Schema Explorer"])
 
@@ -238,6 +426,8 @@ with tab1:
                 df_result, final_sql, logs = agent.execute_with_self_correction(user_query)
 
             if df_result is not None and not df_result.empty:
+                render_kpi_cards(df_result)
+
                 st.subheader("💡 บทสรุปการวิเคราะห์ (Executive Summary)")
                 with st.spinner("กำลังวิเคราะห์และสรุป Insight..."):
                     summary = agent.generate_executive_summary(user_query, df_result)
@@ -249,7 +439,7 @@ with tab1:
                 chart_fig = auto_chart(df_result)
                 if chart_fig is not None:
                     st.subheader("📈 กราฟประกอบผลลัพธ์")
-                    st.plotly_chart(chart_fig, use_container_width=True)
+                    st.plotly_chart(style_chart_theme(chart_fig), use_container_width=True)
             else:
                 st.warning("ไม่พบข้อมูล หรือเกิดข้อผิดพลาดในการรัน SQL")
 
