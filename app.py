@@ -8,7 +8,7 @@ from google import genai
 # ==========================================
 class EnterpriseDataAgent:
     def __init__(self):
-        # 1. ดึง GEMINI_API_KEY
+        # 1. ดึง GEMINI_API_KEY จาก Streamlit Secrets หรือ Environment Variable
         api_key = None
         try:
             if "GEMINI_API_KEY" in st.secrets:
@@ -18,16 +18,16 @@ class EnterpriseDataAgent:
         except Exception:
             api_key = os.environ.get("GEMINI_API_KEY")
 
-        # 2. สร้าง Gemini Client
+        # 2. เริ่มต้นสร้าง Gemini Client
         if api_key:
             self.client = genai.Client(api_key=api_key)
         else:
             self.client = None
             print("Warning: GEMINI_API_KEY not found.")
 
-        # ตั้งค่าโมเดลหลักและโมเดลสำรอง
-        self.primary_model = "gemini-1.5-flash"
-        self.fallback_model = "gemini-1.5-pro"
+        # ตั้งค่าโมเดลหลักและโมเดลสำรองให้ถูกต้องตาม SDK ใหม่
+        self.primary_model = "gemini-2.5-flash"
+        self.fallback_model = "gemini-2.0-flash"
 
         # 3. เชื่อมต่อ DuckDB ใน Memory
         self.con = duckdb.connect(database=':memory:')
@@ -184,14 +184,12 @@ with tab2:
         col_names = [c[0] for c in cols]
         if search_term.lower() in t_name.lower() or any(search_term.lower() in c.lower() for c in col_names):
             with st.expander(f"📌 Table: {t_name}", expanded=False):
-                # 1. แสดง Column & Data Type
                 st.markdown("**📌 Data Types & Schema:**")
                 st.dataframe(
                     [{"Column Name": c[0], "Data Type": c[1]} for c in cols],
                     use_container_width=True
                 )
                 
-                # 2. แสดงตัวอย่างตารางข้อมูล (Top 3 rows)
                 st.markdown("**👀 Sample Data (Top 3 rows):**")
                 try:
                     sample_df = agent.con.execute(f"SELECT * FROM {t_name} LIMIT 3").df()
