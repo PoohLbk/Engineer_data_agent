@@ -22,3 +22,47 @@ class EnterpriseDataAgent:
                 self.con.execute(f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT * FROM '{url}'")
             except Exception as e:
                 print(f"Error loading {table_name}: {e}")
+    def execute_with_self_correction(self, user_query):
+        """
+        ฟังก์ชันสำหรับแปลงภาษาธรรมชาติเป็น SQL และรันคำสั่งบน DuckDB
+        """
+        logs = []
+        logs.append(f"Received query: {user_query}")
+        
+        # 1. รวบรวม Schema ของตารางทั้งหมดส่งให้ LLM
+        schema_info = ""
+        tables = self.con.execute("SHOW TABLES").fetchall()
+        for t in tables:
+            t_name = t[0]
+            cols = self.con.execute(f"DESCRIBE {t_name}").fetchall()
+            col_str = ", ".join([f"{c[0]} ({c[1]})" for c in cols])
+            schema_info += f"Table {t_name}: {col_str}\n"
+
+        # 2. สร้าง Prompt ส่งให้ Gemini (หรือ LLM ที่ใช้งาน)
+        prompt = f"""
+        You are a DuckDB SQL expert. Given the following schema:
+        {schema_info}
+        
+        Write a valid DuckDB SQL query to answer this user request:
+        "{user_query}"
+        
+        Return ONLY the raw SQL query without codeblock formatting or explanations.
+        """
+        
+        try:
+            # แปลงคำถามเป็น SQL
+            response = self.client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
+            sql_query = response.text.strip().replace("```sql", "").replace("```", "").strip()
+            logs.append(f"Generated SQL: {sql_query}")
+            
+            # 3. รันคำสั่ง SQL บน DuckDB
+            df_result = self.con.execute(sql_query).df()
+            return df_result, sql_query, logs
+
+        except Exception as e:
+            error_msg = f"Execution Error: {str(e)}"
+            logs.append(error_msg)
+            return None, "", logs
