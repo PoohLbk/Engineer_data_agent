@@ -2,11 +2,10 @@ import os
 import duckdb
 import streamlit as st
 from google import genai
-from google.genai import types
 
 class EnterpriseDataAgent:
     def __init__(self):
-        # 1. จัดการดึง GEMINI_API_KEY
+        # 1. ดึง GEMINI_API_KEY จาก Streamlit Secrets หรือ Environment Variable
         api_key = None
         try:
             if "GEMINI_API_KEY" in st.secrets:
@@ -16,12 +15,9 @@ class EnterpriseDataAgent:
         except Exception:
             api_key = os.environ.get("GEMINI_API_KEY")
 
-        # 2. เริ่มต้นสร้าง Gemini Client
+        # 2. เริ่มต้นสร้าง Gemini Client แบบ Default (ไม่ล็อก api_version)
         if api_key:
-            self.client = genai.Client(
-                api_key=api_key,
-                http_options=types.HttpOptions(api_version='v1')
-            )
+            self.client = genai.Client(api_key=api_key)
         else:
             self.client = None
             print("Warning: GEMINI_API_KEY not found.")
@@ -53,6 +49,7 @@ class EnterpriseDataAgent:
             logs.append("Execution Error: GEMINI_API_KEY is missing.")
             return None, "", logs
         
+        # 1. รวบรวม Schema ของตารางทั้งหมด
         schema_info = ""
         tables = self.con.execute("SHOW TABLES").fetchall()
         for t in tables:
@@ -72,6 +69,7 @@ class EnterpriseDataAgent:
         """
         
         try:
+            # ใช้ชื่อโมเดล gemini-1.5-flash
             response = self.client.models.generate_content(
                 model='gemini-1.5-flash',
                 contents=prompt
