@@ -2,10 +2,11 @@ import os
 import duckdb
 import streamlit as st
 from google import genai
+from google.genai import types
 
 class EnterpriseDataAgent:
     def __init__(self):
-        # 1. จัดการดึง GEMINI_API_KEY จาก Streamlit Secrets หรือ Environment Variable
+        # 1. จัดการดึง GEMINI_API_KEY
         api_key = None
         try:
             if "GEMINI_API_KEY" in st.secrets:
@@ -15,14 +16,17 @@ class EnterpriseDataAgent:
         except Exception:
             api_key = os.environ.get("GEMINI_API_KEY")
 
-        # 2. เริ่มต้นสร้าง Gemini Client (ป้องกัน AttributeError: 'client')
+        # 2. เริ่มต้นสร้าง Gemini Client โดยระบุ api_version='v1'
         if api_key:
-            self.client = genai.Client(api_key=api_key)
+            self.client = genai.Client(
+                api_key=api_key,
+                http_options=types.HttpOptions(api_version='v1')
+            )
         else:
             self.client = None
             print("Warning: GEMINI_API_KEY not found.")
 
-        # 3. เชื่อมต่อ DuckDB ใน Memory
+        # 3. เชื่อมต่อ DuckDB
         self.con = duckdb.connect(database=':memory:')
         
         # 4. โหลดไฟล์ข้อมูล 5 ตารางจาก GitHub Release v1.0
@@ -43,17 +47,12 @@ class EnterpriseDataAgent:
                 print(f"Error loading {table_name}: {e}")
 
     def execute_with_self_correction(self, user_query):
-        """
-        ฟังก์ชันสำหรับแปลงภาษาธรรมชาติเป็น SQL และรันคำสั่งบน DuckDB
-        """
-        logs = []
-        logs.append(f"Received query: {user_query}")
+        logs = [f"Received query: {user_query}"]
         
         if not self.client:
             logs.append("Execution Error: GEMINI_API_KEY is missing.")
             return None, "", logs
         
-        # 1. รวบรวม Schema ของตารางทั้งหมดส่งให้ LLM
         schema_info = ""
         tables = self.con.execute("SHOW TABLES").fetchall()
         for t in tables:
@@ -62,7 +61,6 @@ class EnterpriseDataAgent:
             col_str = ", ".join([f"{c[0]} ({c[1]})" for c in cols])
             schema_info += f"Table {t_name}: {col_str}\n"
 
-        # 2. สร้าง Prompt ส่งให้ Gemini
         prompt = f"""
         You are a DuckDB SQL expert. Given the following schema:
         {schema_info}
@@ -74,15 +72,13 @@ class EnterpriseDataAgent:
         """
         
         try:
-            # แปลงคำถามเป็น SQL
             response = self.client.models.generate_content(
-            model='gemini-1.5-flash',
-            contents=prompt
+                model='gemini-2.5-flash',
+                contents=prompt
             )
             sql_query = response.text.strip().replace("```sql", "").replace("```", "").strip()
             logs.append(f"Generated SQL: {sql_query}")
             
-            # 3. รันคำสั่ง SQL บน DuckDB
             df_result = self.con.execute(sql_query).df()
             return df_result, sql_query, logs
 
@@ -92,9 +88,6 @@ class EnterpriseDataAgent:
             return None, "", logs
 
     def generate_executive_summary(self, user_query, df_result):
-        """
-        ฟังก์ชันใช้ Gemini สรุปผลลัพธ์ข้อมูลจาก DataFrame ให้อยู่ในรูปแบบคำอธิบายสำหรับผู้บริหาร
-        """
         if df_result is None or df_result.empty:
             return "ไม่พบข้อมูลสำหรับสรุปผลลัพธ์"
 
@@ -118,9 +111,9 @@ class EnterpriseDataAgent:
         """
         
         try:
-            rresponse = self.client.models.generate_content(
-            model='gemini-1.5-flash',
-            contents=prompt
+            response = self.client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
             )
             return response.text.strip()
         except Exception as e:
