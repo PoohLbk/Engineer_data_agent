@@ -3,6 +3,9 @@ import duckdb
 import streamlit as st
 from google import genai
 
+# ==========================================
+# 1. Class: EnterpriseDataAgent (Data Engine)
+# ==========================================
 class EnterpriseDataAgent:
     def __init__(self):
         # 1. ดึง GEMINI_API_KEY จาก Streamlit Secrets หรือ Environment Variable
@@ -29,7 +32,7 @@ class EnterpriseDataAgent:
         # 3. เชื่อมต่อ DuckDB ใน Memory
         self.con = duckdb.connect(database=':memory:')
         
-        # 4. โหลดไฟล์ข้อมูล 5 ตารางจาก GitHub Release v1.0
+        # 4. โหลดข้อมูลแบบ VIEW (Lazy Load ช่วยให้เปิดแอปได้เร็ว ไม่ค้างหน้าขาว)
         base_url = "https://github.com/PoohLbk/Engineer_data_agent/releases/download/v1.0"
         
         files_to_load = {
@@ -42,12 +45,12 @@ class EnterpriseDataAgent:
         
         for table_name, url in files_to_load.items():
             try:
-                self.con.execute(f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT * FROM '{url}'")
+                self.con.execute(f"CREATE VIEW IF NOT EXISTS {table_name} AS SELECT * FROM '{url}'")
             except Exception as e:
                 print(f"Error loading {table_name}: {e}")
 
     def _call_gemini_with_fallback(self, prompt):
-        """ช่วยเรียกใช้งาน API หากโมเดลหลักคราช/หนาแน่น จะสลับไปใช้โมเดลสำรองให้อัตโนมัติ"""
+        """เรียกใช้งาน API หากโมเดลหลักค้าง/หนาแน่น จะสลับไปใช้โมเดลสำรองให้อัตโนมัติ"""
         try:
             response = self.client.models.generate_content(
                 model=self.primary_model,
@@ -55,7 +58,6 @@ class EnterpriseDataAgent:
             )
             return response.text
         except Exception as e:
-            # หากติด 503 หรือ Error อื่นๆ ให้ลองใช้โมเดลสำรอง
             print(f"Primary model failed ({e}), retrying with fallback model...")
             response = self.client.models.generate_content(
                 model=self.fallback_model,
@@ -129,3 +131,60 @@ class EnterpriseDataAgent:
             return summary_text.strip()
         except Exception as e:
             return f"เกิดข้อผิดพลาดในการสร้างสรุปผลลัพธ์: {str(e)}"
+
+# ==========================================
+# 2. Streamlit Web UI Application
+# ==========================================
+st.set_page_config(page_title="Enterprise Data Agent", layout="wide")
+
+# แคชออบเจกต์ agent เพื่อป้องกันการเชื่อมต่อ DuckDB ใหม่ทุกครั้งที่เปลี่ยนหน้า/กดปุ่ม
+@st.cache_resource
+def load_agent():
+    return EnterpriseDataAgent()
+
+with st.spinner("กำลังเชื่อมต่อฐานข้อมูล และสร้าง Data Engine Views..."):
+    agent = load_agent()
+
+st.title("Enterprise Data Agent")
+
+# สร้าง Tab สำหรับแยกหน้าการทำงาน
+tab1, tab2 = st.tabs(["💬 AI Query Engine", "🔍 Data Schema Explorer"])
+
+with tab1:
+    user_query = st.text_input("พิมพ์คำถามของคุณที่นี่ (เช่น: ขอ 5 อันดับสินค้าที่มียอดขายรวมสูงสุด):")
+    
+    if st.button("ประมวลผลคำสั่ง"):
+        if user_query:
+            with st.spinner("กำลังสร้างคำสั่ง SQL และดึงข้อมูล..."):
+                df_result, final_sql, logs = agent.execute_with_self_correction(user_query)
+            
+            if df_result is not None and not df_result.empty:
+                st.subheader("💡 บทสรุปการวิเคราะห์ (Executive Summary)")
+                with st.spinner("กำลังวิเคราะห์และสรุป Insight..."):
+                    summary = agent.generate_executive_summary(user_query, df_result)
+                st.write(summary)
+                
+                st.subheader("📊 ผลลัพธ์ตารางข้อมูล (Query Results)")
+                st.dataframe(df_result, use_container_width=True)
+            else:
+                st.warning("ไม่พบข้อมูล หรือเกิดข้อผิดพลาดในการรัน SQL")
+            
+            with st.expander("🔍 Audit Logs & Generated SQL Pipeline (สำหรับงานเทคนิค)"):
+                st.code(final_sql, language="sql")
+                for log in logs:
+                    st.write(log)
+
+with tab2:
+    st.subheader(" Schema ของฐานข้อมูลทั้งหมด")
+    search_term = st.text_input("ค้นหาชื่อตาราง หรือ ชื่อคอลัมน์:")
+    
+    tables = agent.con.execute("SHOW TABLES").fetchall()
+    for t in tables:
+        t_name = t[0]
+        cols = agent.con.execute(f"DESCRIBE {t_name}").fetchall()
+        
+        # ตรวจสอบการค้นหา Search Term
+        col_names = [c[0] for c in cols]
+        if search_term.lower() in t_name.lower() or any(search_term.lower() in c.lower() for c in col_names):
+            with st.expander(f"📌 Table: {t_name}"):
+                st.table([{"Column": c[0], "Type": c[1]} for c in cols])
