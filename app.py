@@ -1,7 +1,64 @@
 import os
 import duckdb
+import pandas as pd
 import streamlit as st
+import plotly.express as px
 from google import genai
+
+
+def auto_chart(df: pd.DataFrame):
+    """
+    เดาชนิดกราฟที่เหมาะสมจากรูปร่างของข้อมูล แล้วคืนค่า Plotly figure
+    (คืนค่า None ถ้าข้อมูลไม่เหมาะกับการพล็อตกราฟ เช่น มีแต่ตัวเลขล้วน หรือมีแค่ 1 คอลัมน์)
+    """
+    if df is None or df.empty or df.shape[1] < 2:
+        return None
+
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    datetime_cols = df.select_dtypes(include="datetime").columns.tolist()
+
+    # ลองแปลงคอลัมน์ object ที่หน้าตาเหมือนวันที่ ให้เป็น datetime จริง
+    if not datetime_cols:
+        for col in df.select_dtypes(include="object").columns:
+            try:
+                converted = pd.to_datetime(df[col], errors="raise")
+                df[col] = converted
+                datetime_cols.append(col)
+                break
+            except Exception:
+                continue
+
+    non_numeric_cols = [c for c in df.columns if c not in numeric_cols]
+
+    if not numeric_cols:
+        return None  # ไม่มีตัวเลขให้พล็อตเลย
+
+    y_col = numeric_cols[0]
+
+    # กรณีมีคอลัมน์วันที่/เวลา -> เส้นแนวโน้ม (Line chart)
+    if datetime_cols:
+        x_col = datetime_cols[0]
+        df_sorted = df.sort_values(by=x_col)
+        fig = px.line(df_sorted, x=x_col, y=numeric_cols, markers=True,
+                       title=f"แนวโน้ม {', '.join(numeric_cols)} ตาม {x_col}")
+        return fig
+
+    # กรณีมีคอลัมน์ข้อความ/หมวดหมู่ -> แท่ง (Bar chart)
+    if non_numeric_cols:
+        x_col = non_numeric_cols[0]
+        df_plot = df.head(30)  # กันไม่ให้แกน x รกเกินไปถ้าแถวเยอะ
+        fig = px.bar(df_plot, x=x_col, y=y_col,
+                     title=f"{y_col} แยกตาม {x_col}")
+        fig.update_layout(xaxis_tickangle=-30)
+        return fig
+
+    # กรณีเป็นตัวเลขล้วน (>=2 คอลัมน์) -> Scatter
+    if len(numeric_cols) >= 2:
+        fig = px.scatter(df, x=numeric_cols[0], y=numeric_cols[1],
+                          title=f"{numeric_cols[1]} เทียบกับ {numeric_cols[0]}")
+        return fig
+
+    return None
 
 # ==========================================
 # 1. Class: EnterpriseDataAgent (Data Engine)
@@ -164,6 +221,11 @@ with tab1:
 
                 st.subheader("📊 ผลลัพธ์ตารางข้อมูล (Query Results)")
                 st.dataframe(df_result, use_container_width=True)
+
+                chart_fig = auto_chart(df_result)
+                if chart_fig is not None:
+                    st.subheader("📈 กราฟประกอบผลลัพธ์")
+                    st.plotly_chart(chart_fig, use_container_width=True)
             else:
                 st.warning("ไม่พบข้อมูล หรือเกิดข้อผิดพลาดในการรัน SQL")
 
