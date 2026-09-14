@@ -15,12 +15,15 @@ class EnterpriseDataAgent:
         except Exception:
             api_key = os.environ.get("GEMINI_API_KEY")
 
-        # 2. เริ่มต้นสร้าง Gemini Client แบบ Default (ไม่ล็อก api_version)
+        # 2. เริ่มต้นสร้าง Gemini Client
         if api_key:
             self.client = genai.Client(api_key=api_key)
         else:
             self.client = None
             print("Warning: GEMINI_API_KEY not found.")
+
+        # เลือกใช้โมเดลรุ่นใหม่ที่รองรับ google-genai SDK โดยตรง
+        self.model_name = "gemini-2.0-flash"
 
         # 3. เชื่อมต่อ DuckDB ใน Memory
         self.con = duckdb.connect(database=':memory:')
@@ -69,9 +72,9 @@ class EnterpriseDataAgent:
         """
         
         try:
-            # ใช้ชื่อโมเดล gemini-1.5-flash
+            # เรียกใช้ด้วยโมเดล gemini-2.0-flash
             response = self.client.models.generate_content(
-                model='gemini-1.5-flash',
+                model=self.model_name,
                 contents=prompt
             )
             sql_query = response.text.strip().replace("```sql", "").replace("```", "").strip()
@@ -110,7 +113,7 @@ class EnterpriseDataAgent:
         
         try:
             response = self.client.models.generate_content(
-                model='gemini-1.5-flash',
+                model=self.model_name,
                 contents=prompt
             )
             return response.text.strip()
