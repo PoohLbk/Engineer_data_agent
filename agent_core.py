@@ -5,7 +5,7 @@ from google import genai
 
 class EnterpriseDataAgent:
     def __init__(self):
-        # 1. ดึง GEMINI_API_KEY จาก Streamlit Secrets หรือ Environment Variable
+        # 1. ดึง GEMINI_API_KEY
         api_key = None
         try:
             if "GEMINI_API_KEY" in st.secrets:
@@ -15,20 +15,20 @@ class EnterpriseDataAgent:
         except Exception:
             api_key = os.environ.get("GEMINI_API_KEY")
 
-        # 2. เริ่มต้นสร้าง Gemini Client
+        # 2. สร้าง Gemini Client
         if api_key:
             self.client = genai.Client(api_key=api_key)
         else:
             self.client = None
             print("Warning: GEMINI_API_KEY not found.")
 
-        # อัปเดตชื่อโมเดลเป็นรุ่นล่าสุดที่ API รองรับ
-        self.model_name = "gemini-3.6-flash"
+        self.primary_model = "gemini-1.5-flash"
+        self.fallback_model = "gemini-1.5-pro"
 
-        # 3. เชื่อมต่อ DuckDB ใน Memory
+        # 3. เชื่อมต่อ DuckDB
         self.con = duckdb.connect(database=':memory:')
         
-        # 4. โหลดไฟล์ข้อมูล 5 ตารางจาก GitHub Release v1.0
+        # 4. โหลดข้อมูลแบบ VIEW (ดึงข้อมูลแบบ Lazy Load เปิดแอปได้เร็วมาก)
         base_url = "https://github.com/PoohLbk/Engineer_data_agent/releases/download/v1.0"
         
         files_to_load = {
@@ -41,9 +41,26 @@ class EnterpriseDataAgent:
         
         for table_name, url in files_to_load.items():
             try:
-                self.con.execute(f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT * FROM '{url}'")
+                # เปลี่ยนจาก CREATE TABLE เป็น CREATE VIEW เพื่อให้โหลดเร็วขึ้น
+                self.con.execute(f"CREATE VIEW IF NOT EXISTS {table_name} AS SELECT * FROM '{url}'")
             except Exception as e:
                 print(f"Error loading {table_name}: {e}")
+
+    def _call_gemini_with_fallback(self, prompt):
+        """เรียก API พร้อมระบบสลับโมเดลสำรองเมื่อติด High Demand"""
+        try:
+            response = self.client.models.generate_content(
+                model=self.primary_model,
+                contents=prompt
+            )
+            return response.text
+        except Exception as e:
+            print(f"Primary model failed ({e}), retrying with fallback model...")
+            response = self.client.models.generate_content(
+                model=self.fallback_model,
+                contents=prompt
+            )
+            return response.text
 
     def execute_with_self_correction(self, user_query):
         logs = [f"Received query: {user_query}"]
@@ -52,7 +69,6 @@ class EnterpriseDataAgent:
             logs.append("Execution Error: GEMINI_API_KEY is missing.")
             return None, "", logs
         
-        # 1. รวบรวม Schema ของตารางทั้งหมด
         schema_info = ""
         tables = self.con.execute("SHOW TABLES").fetchall()
         for t in tables:
@@ -72,11 +88,8 @@ class EnterpriseDataAgent:
         """
         
         try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt
-            )
-            sql_query = response.text.strip().replace("```sql", "").replace("```", "").strip()
+            raw_response = self._call_gemini_with_fallback(prompt)
+            sql_query = raw_response.strip().replace("```sql", "").replace("```", "").strip()
             logs.append(f"Generated SQL: {sql_query}")
             
             df_result = self.con.execute(sql_query).df()
@@ -111,10 +124,7 @@ class EnterpriseDataAgent:
         """
         
         try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt
-            )
-            return response.text.strip()
+            summary_text = self._call_gemini_with_fallback(prompt)
+            return summary_text.strip()
         except Exception as e:
             return f"เกิดข้อผิดพลาดในการสร้างสรุปผลลัพธ์: {str(e)}"
