@@ -2,3 +2,4 @@ streamlit
 duckdb
 google-genai
 pandas
+plotly
