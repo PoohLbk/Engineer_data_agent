@@ -309,15 +309,18 @@ h1, h2, h3 {{
 }}
 [data-testid="stButton"] button {{
     background-color: {COLOR_ACCENT} !important;
-    color: #1A1406 !important;
+    color: #FFFFFF !important;
     border: none !important;
     border-radius: 6px !important;
     font-weight: 600 !important;
     padding: 0.5rem 1.4rem !important;
 }}
+[data-testid="stButton"] button p {{
+    color: #FFFFFF !important;
+}}
 [data-testid="stButton"] button:hover {{
     background-color: #DDB542 !important;
-    color: #1A1406 !important;
+    color: #FFFFFF !important;
 }}
 [data-testid="stTabs"] button [data-testid="stMarkdownContainer"] p {{
     font-family: 'IBM Plex Sans', sans-serif;
@@ -420,7 +423,7 @@ tab1, tab2 = st.tabs(["💬 AI Query Engine", "🔍 Data Schema Explorer"])
 with tab1:
     user_query = st.text_input("พิมพ์คำถามของคุณที่นี่ (เช่น: ขอ 5 อันดับสินค้าที่มียอดขายรวมสูงสุด):")
 
-    if st.button("ประมวลผลคำสั่ง", type="primary"):
+    if st.button("ประมวลผลคำสั่ง"):
         if user_query:
             with st.spinner("กำลังสร้างคำสั่ง SQL และดึงข้อมูล..."):
                 df_result, final_sql, logs = agent.execute_with_self_correction(user_query)
