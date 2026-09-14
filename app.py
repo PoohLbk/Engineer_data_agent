@@ -15,7 +15,7 @@ agent = get_agent()
 
 # Sidebar
 with st.sidebar:
-    st.header("🛡️ Secured Data Sources")
+    st.header(" Secured Data Sources")
     tables = agent.con.execute("SHOW TABLES").fetchall()
     if tables:
         for t in tables:
@@ -23,10 +23,10 @@ with st.sidebar:
     else:
         st.error("ไม่พบตารางข้อมูล")
 
-st.title("🔒 On-Premise Data Agent")
+st.title(" On-Premise Data Agent")
 st.caption("ระบบวิเคราะห์ข้อมูลองค์กรระดับ Enterprise | Fully Offline & Private Network Only")
 
-tab1, tab2 = st.tabs(["💬 AI Query Engine", "📊 Data Schema & Dictionary"])
+tab1, tab2 = st.tabs([" AI Query Engine", " Data Schema & Dictionary"])
 
 # -------------------------------------------------------------
 # TAB 1: AI Query Engine & Export Features
@@ -40,19 +40,19 @@ with tab1:
             with st.spinner("กำลังเขียน SQL และประมวลผลผ่าน DuckDB..."):
                 df_result, final_sql, logs = agent.execute_with_self_correction(user_query)
 
-                st.markdown("### 💡 บทสรุปการวิเคราะห์ (Executive Summary)")
+                st.markdown("### บทสรุปการวิเคราะห์ (Executive Summary)")
                 summary = agent.generate_executive_summary(user_query, df_result)
                 st.info(summary)
 
                 if df_result is not None and not df_result.empty:
-                    st.markdown("### 📋 ตารางข้อมูลผลลัพธ์ (Result Set)")
+                    st.markdown("### ตารางข้อมูลผลลัพธ์ (Result Set)")
                     st.dataframe(df_result, use_container_width=True)
 
                     col_dl1, col_dl2 = st.columns(2)
                     
                     csv_data = df_result.to_csv(index=False).encode('utf-8-sig')
                     col_dl1.download_button(
-                        label="📥 ดาวน์โหลดผลลัพธ์ (CSV File)",
+                        label=" ดาวน์โหลดผลลัพธ์ (CSV File)",
                         data=csv_data,
                         file_name="analyzed_data_export.csv",
                         mime="text/csv"
@@ -63,7 +63,7 @@ with tab1:
                         df_result.to_excel(writer, index=False, sheet_name='Analyzed_Data')
                     
                     col_dl2.download_button(
-                        label="📊 ดาวน์โหลดผลลัพธ์ (Excel File)",
+                        label=" ดาวน์โหลดผลลัพธ์ (Excel File)",
                         data=buffer.getvalue(),
                         file_name="analyzed_data_export.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -71,7 +71,7 @@ with tab1:
 
                     numeric_cols = df_result.select_dtypes(include=['number']).columns.tolist()
                     if len(numeric_cols) > 0 and len(df_result) > 1:
-                        st.markdown("### 📈 กราฟแสดงผลอัตโนมัติ")
+                        st.markdown("###  กราฟแสดงผลอัตโนมัติ")
                         st.bar_chart(df_result.set_index(df_result.columns[0])[numeric_cols[0]])
 
                 with st.expander("🔍 Audit Logs & Generated SQL Pipeline (สำหรับงานเทคนิค)"):
@@ -82,7 +82,7 @@ with tab1:
 # TAB 2: Data Schema Explorer (พร้อมช่องค้นหา Search Box)
 # -------------------------------------------------------------
 with tab2:
-    st.subheader("📊 โครงสร้างตารางข้อมูลและรายละเอียดคอลัมน์ (Data Dictionary)")
+    st.subheader("โครงสร้างตารางข้อมูลและรายละเอียดคอลัมน์ (Data Dictionary)")
     
     tables = agent.con.execute("SHOW TABLES").fetchall()
     if not tables:
