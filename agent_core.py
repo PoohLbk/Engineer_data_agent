@@ -76,8 +76,8 @@ class EnterpriseDataAgent:
         try:
             # แปลงคำถามเป็น SQL
             response = self.client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt
+            model='gemini-1.5-flash',
+            contents=prompt
             )
             sql_query = response.text.strip().replace("```sql", "").replace("```", "").strip()
             logs.append(f"Generated SQL: {sql_query}")
@@ -118,9 +118,9 @@ class EnterpriseDataAgent:
         """
         
         try:
-            response = self.client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt
+            rresponse = self.client.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=prompt
             )
             return response.text.strip()
         except Exception as e:
