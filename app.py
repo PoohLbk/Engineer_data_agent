@@ -3,62 +3,170 @@ import duckdb
 import pandas as pd
 import streamlit as st
 import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from google import genai
 
 
-def auto_chart(df: pd.DataFrame):
-    """
-    เดาชนิดกราฟที่เหมาะสมจากรูปร่างของข้อมูล แล้วคืนค่า Plotly figure
-    (คืนค่า None ถ้าข้อมูลไม่เหมาะกับการพล็อตกราฟ เช่น มีแต่ตัวเลขล้วน หรือมีแค่ 1 คอลัมน์)
-    """
-    if df is None or df.empty or df.shape[1] < 2:
-        return None
-
-    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+def _find_datetime_col(df: pd.DataFrame):
+    """หาคอลัมน์ที่เป็นวันที่/เวลา (รวมถึงลองแปลงจาก object ที่หน้าตาเหมือนวันที่)"""
     datetime_cols = df.select_dtypes(include="datetime").columns.tolist()
-
-    # ลองแปลงคอลัมน์ object ที่หน้าตาเหมือนวันที่ ให้เป็น datetime จริง
     if not datetime_cols:
         for col in df.select_dtypes(include="object").columns:
             try:
-                converted = pd.to_datetime(df[col], errors="raise")
-                df[col] = converted
+                df[col] = pd.to_datetime(df[col], errors="raise")
                 datetime_cols.append(col)
                 break
             except Exception:
                 continue
+    return datetime_cols[0] if datetime_cols else None
 
-    non_numeric_cols = [c for c in df.columns if c not in numeric_cols]
 
+def generate_charts(df: pd.DataFrame):
+    """
+    วิเคราะห์รูปร่างของผลลัพธ์ query แล้วสร้างกราฟ Plotly ที่เหมาะสมโดยอัตโนมัติ
+    คืนค่าเป็น list ของ (หัวข้อกราฟ, figure) — อาจมีมากกว่า 1 กราฟต่อผลลัพธ์
+    """
+    charts = []
+    if df is None or df.empty or df.shape[1] < 2:
+        return charts
+
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
     if not numeric_cols:
-        return None  # ไม่มีตัวเลขให้พล็อตเลย
+        return charts  # ไม่มีตัวเลขให้พล็อตเลย
 
     y_col = numeric_cols[0]
+    date_col = _find_datetime_col(df)
+    non_numeric_cols = [c for c in df.columns if c not in numeric_cols and c != date_col]
 
-    # กรณีมีคอลัมน์วันที่/เวลา -> เส้นแนวโน้ม (Line chart)
-    if datetime_cols:
-        x_col = datetime_cols[0]
-        df_sorted = df.sort_values(by=x_col)
-        fig = px.line(df_sorted, x=x_col, y=numeric_cols, markers=True,
-                       title=f"แนวโน้ม {', '.join(numeric_cols)} ตาม {x_col}")
-        return fig
+    # 1) มีคอลัมน์วันที่ -> Line chart แนวโน้ม
+    if date_col:
+        df_sorted = df.sort_values(by=date_col)
+        fig = px.line(df_sorted, x=date_col, y=numeric_cols, markers=True,
+                       title=f"แนวโน้ม {', '.join(numeric_cols)} ตาม {date_col}")
+        charts.append(("แนวโน้มตามช่วงเวลา (Trend)", fig))
 
-    # กรณีมีคอลัมน์ข้อความ/หมวดหมู่ -> แท่ง (Bar chart)
+    # 2) มีคอลัมน์หมวดหมู่ + ตัวเลข -> Bar / Pie / Pareto
     if non_numeric_cols:
-        x_col = non_numeric_cols[0]
-        df_plot = df.head(30)  # กันไม่ให้แกน x รกเกินไปถ้าแถวเยอะ
-        fig = px.bar(df_plot, x=x_col, y=y_col,
-                     title=f"{y_col} แยกตาม {x_col}")
-        fig.update_layout(xaxis_tickangle=-30)
-        return fig
+        cat_col = non_numeric_cols[0]
+        grouped = df.groupby(cat_col, as_index=False)[y_col].sum().sort_values(y_col, ascending=False)
 
-    # กรณีเป็นตัวเลขล้วน (>=2 คอลัมน์) -> Scatter
-    if len(numeric_cols) >= 2:
-        fig = px.scatter(df, x=numeric_cols[0], y=numeric_cols[1],
-                          title=f"{numeric_cols[1]} เทียบกับ {numeric_cols[0]}")
-        return fig
+        # Bar chart (top 15 อันดับ)
+        bar_df = grouped.head(15)
+        fig_bar = px.bar(bar_df, x=cat_col, y=y_col, title=f"{y_col} แยกตาม {cat_col} (Top {len(bar_df)})")
+        fig_bar.update_layout(xaxis_tickangle=-30)
+        charts.append(("เปรียบเทียบตามหมวดหมู่ (Bar)", fig_bar))
 
-    return None
+        # Pie chart — เฉพาะกรณีหมวดหมู่ไม่เยอะเกินไป (สัดส่วนอ่านง่าย)
+        if grouped[cat_col].nunique() <= 8:
+            fig_pie = px.pie(grouped, names=cat_col, values=y_col,
+                              title=f"สัดส่วน {y_col} ตาม {cat_col}", hole=0.35)
+            charts.append(("สัดส่วนโดยรวม (Pie)", fig_pie))
+
+        # Pareto chart (80/20) — เฉพาะกรณีมีหลายหมวดหมู่พอจะวิเคราะห์
+        if grouped[cat_col].nunique() >= 3:
+            pareto_df = grouped.head(15).reset_index(drop=True)
+            total = pareto_df[y_col].sum()
+            if total:
+                pareto_df["cum_pct"] = pareto_df[y_col].cumsum() / total * 100
+                fig_pareto = make_subplots(specs=[[{"secondary_y": True}]])
+                fig_pareto.add_trace(
+                    go.Bar(x=pareto_df[cat_col].astype(str), y=pareto_df[y_col], name=y_col),
+                    secondary_y=False,
+                )
+                fig_pareto.add_trace(
+                    go.Scatter(x=pareto_df[cat_col].astype(str), y=pareto_df["cum_pct"],
+                               name="สัดส่วนสะสม (%)", mode="lines+markers"),
+                    secondary_y=True,
+                )
+                fig_pareto.add_hline(y=80, line_dash="dot", secondary_y=True,
+                                      annotation_text="เส้น 80%")
+                fig_pareto.update_layout(title=f"Pareto Analysis: {y_col} ตาม {cat_col} (กฎ 80/20)")
+                fig_pareto.update_yaxes(title_text=y_col, secondary_y=False)
+                fig_pareto.update_yaxes(title_text="สัดส่วนสะสม (%)", range=[0, 110], secondary_y=True)
+                charts.append(("Pareto Analysis (80/20)", fig_pareto))
+
+    # 3) ไม่มีคอลัมน์หมวดหมู่/วันที่ แต่มีตัวเลขตั้งแต่ 2 คอลัมน์ -> Scatter
+    if not date_col and not non_numeric_cols and len(numeric_cols) >= 2:
+        fig_scatter = px.scatter(df, x=numeric_cols[0], y=numeric_cols[1],
+                                  title=f"{numeric_cols[1]} เทียบกับ {numeric_cols[0]}")
+        charts.append(("ความสัมพันธ์ระหว่างตัวแปร (Scatter)", fig_scatter))
+
+    return charts
+
+
+def compute_statistical_insights(df: pd.DataFrame) -> str:
+    """
+    คำนวณสถิติเชิงวิเคราะห์เบื้องต้นจริงจาก DataFrame (ไม่ใช่ให้ LLM เดาตัวเลขเอง):
+    - สถิติพื้นฐาน (mean/median/std/min/max)
+    - Outlier detection ด้วยกฎ IQR
+    - Pareto (80/20): ต้องใช้กี่หมวดหมู่ถึงจะครอบคลุม 80% ของยอดรวม
+    - % การเติบโตเทียบครึ่งแรก vs ครึ่งหลังของข้อมูล (ถ้ามีคอลัมน์วันที่)
+    ผลลัพธ์เป็นข้อความสรุป ใช้เป็น "ground truth" ป้อนให้ Gemini เขียนบรรยายต่อ
+    """
+    if df is None or df.empty:
+        return "ไม่มีข้อมูลเพียงพอสำหรับวิเคราะห์เชิงสถิติ"
+
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    if not numeric_cols:
+        return "ไม่มีคอลัมน์ตัวเลขในผลลัพธ์นี้ จึงไม่สามารถวิเคราะห์เชิงสถิติเพิ่มเติมได้"
+
+    main_col = numeric_cols[0]
+    series = df[main_col].dropna()
+    lines = []
+
+    if series.empty:
+        return "ไม่มีข้อมูลตัวเลขเพียงพอสำหรับวิเคราะห์"
+
+    lines.append(
+        f"สถิติเบื้องต้นของคอลัมน์ '{main_col}': ค่าเฉลี่ย={series.mean():,.2f}, "
+        f"มัธยฐาน={series.median():,.2f}, ส่วนเบี่ยงเบนมาตรฐาน={series.std():,.2f}, "
+        f"ต่ำสุด={series.min():,.2f}, สูงสุด={series.max():,.2f} (n={len(series)})"
+    )
+
+    # Outlier detection ด้วย IQR
+    q1, q3 = series.quantile(0.25), series.quantile(0.75)
+    iqr = q3 - q1
+    lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+    outliers = series[(series < lower) | (series > upper)]
+    lines.append(
+        f"Outlier Detection (กฎ IQR) บนคอลัมน์ '{main_col}': พบ {len(outliers)} รายการ "
+        f"จากทั้งหมด {len(series)} แถว (ช่วงปกติโดยประมาณ {lower:,.2f} ถึง {upper:,.2f})"
+    )
+
+    # Pareto 80/20 (ต้องมีคอลัมน์หมวดหมู่)
+    date_col_probe = _find_datetime_col(df)
+    non_numeric_cols = [c for c in df.columns if c not in numeric_cols and c != date_col_probe]
+    if non_numeric_cols:
+        cat_col = non_numeric_cols[0]
+        grouped = df.groupby(cat_col)[main_col].sum().sort_values(ascending=False)
+        total = grouped.sum()
+        if total and len(grouped) > 0:
+            cum_pct = grouped.cumsum() / total * 100
+            n_items_80 = int((cum_pct < 80).sum()) + 1
+            n_items_80 = min(n_items_80, len(grouped))
+            pct_of_items = n_items_80 / len(grouped) * 100
+            lines.append(
+                f"Pareto Analysis (80/20) บน '{cat_col}': มีเพียง {n_items_80} รายการ "
+                f"(คิดเป็น {pct_of_items:.1f}% ของ {cat_col} ทั้งหมด {len(grouped)} รายการ) "
+                f"ที่รวมกันสร้าง '{main_col}' ได้ถึงประมาณ 80% ของยอดรวมทั้งหมด"
+            )
+
+    # % การเติบโต ครึ่งแรก vs ครึ่งหลัง (ถ้ามีคอลัมน์วันที่)
+    if date_col_probe:
+        df_sorted = df.sort_values(by=date_col_probe)
+        mid = len(df_sorted) // 2
+        if mid > 0:
+            first_half = df_sorted.iloc[:mid][main_col].sum()
+            second_half = df_sorted.iloc[mid:][main_col].sum()
+            if first_half != 0:
+                growth = (second_half - first_half) / abs(first_half) * 100
+                lines.append(
+                    f"อัตราการเติบโตของ '{main_col}' เมื่อเทียบครึ่งแรกกับครึ่งหลังของช่วงข้อมูล "
+                    f"(เรียงตาม '{date_col_probe}'): เปลี่ยนแปลง {growth:+.1f}%"
+                )
+
+    return "\n".join(lines)
 
 # ==========================================
 # 1. Class: EnterpriseDataAgent (Data Engine)
@@ -192,19 +300,26 @@ class EnterpriseDataAgent:
             return "ไม่สามารถสรุปผลลัพธ์ได้เนื่องจากขาด GEMINI_API_KEY"
 
         data_preview = df_result.head(20).to_string(index=False)
+        stats_block = compute_statistical_insights(df_result)
 
         prompt = f"""
-        คุณเป็น Data Analyst ผู้เชี่ยวชาญ กรุณาสรุปผลลัพธ์จากข้อมูลด้านล่างนี้ เพื่อตอบคำถามของผู้ใช้:
+        คุณเป็น Data Analyst / Data Scientist ผู้เชี่ยวชาญ กรุณาสรุปผลลัพธ์จากข้อมูลด้านล่างนี้ เพื่อตอบคำถามของผู้ใช้:
 
         คำถามของผู้ใช้: "{user_query}"
 
-        ผลลัพธ์ข้อมูลที่ได้จาก Database:
+        ผลลัพธ์ข้อมูลที่ได้จาก Database (ตัวอย่าง 20 แถวแรก):
         {data_preview}
 
+        ผลการวิเคราะห์เชิงสถิติที่คำนวณไว้ล่วงหน้าแล้ว (เป็นตัวเลขจริงที่คำนวณจากข้อมูลทั้งหมด ไม่ใช่การประมาณ
+        ให้ใช้ตัวเลขชุดนี้อ้างอิงในการตอบ ห้ามคำนวณตัวเลขสถิติขึ้นใหม่เอง):
+        {stats_block}
+
         คำแนะนำในการตอบ:
-        1. อธิบายคำตอบหลักให้ชัดเจน ตรงประเด็น
+        1. อธิบายคำตอบหลักให้ชัดเจน ตรงประเด็นกับคำถามของผู้ใช้ก่อน
         2. สรุปจุดสำคัญหรือ Insight ที่น่าสนใจจากข้อมูล เป็นข้อๆ (Bullet points)
-        3. ตอบเป็นภาษาไทยที่สุภาพ เข้าใจง่าย และเป็นทางการ
+        3. อ้างอิงผลการวิเคราะห์เชิงสถิติที่ให้ไว้ข้างต้น (Outlier, Pareto 80/20, % การเติบโต ถ้ามี)
+           แล้วตีความเป็นภาษาที่ผู้บริหารเข้าใจง่าย พร้อมข้อเสนอแนะเชิงธุรกิจถ้าเป็นไปได้
+        4. ตอบเป็นภาษาไทยที่สุภาพ เข้าใจง่าย และเป็นทางการ
         """
 
         try:
@@ -362,13 +477,27 @@ def format_kpi_number(x):
 
 
 def compute_kpis(df: pd.DataFrame):
-    """สร้างชุด KPI จากผลลัพธ์ query: จำนวนแถว + ผลรวม/ค่าเฉลี่ยของคอลัมน์ตัวเลข (สูงสุด 3 คอลัมน์แรก)"""
+    """
+    สร้างชุด KPI จากผลลัพธ์ query:
+    - จำนวนแถว
+    - ผลรวม/ค่าเฉลี่ยของคอลัมน์ตัวเลข (สูงสุด 2 คอลัมน์แรก)
+    - จำนวนนับไม่ซ้ำ (distinct) ของคอลัมน์ที่ดูเหมือน ID เช่น customer_id, order_id ถ้ามี
+    """
     kpis = [("จำนวนแถวผลลัพธ์", f"{len(df):,}", "")]
+
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
-    for col in numeric_cols[:3]:
+    for col in numeric_cols[:2]:
         total = df[col].sum()
         avg = df[col].mean()
         kpis.append((f"รวม {col}", format_kpi_number(total), f"เฉลี่ย {format_kpi_number(avg)} / แถว"))
+
+    id_like_keywords = ["customer", "order", "user", "ลูกค้า"]
+    for col in df.columns:
+        col_lower = col.lower()
+        if any(kw in col_lower for kw in id_like_keywords) and len(kpis) < 4:
+            distinct_count = df[col].nunique()
+            kpis.append((f"จำนวน {col} ไม่ซ้ำ", f"{distinct_count:,}", ""))
+
     return kpis[:4]
 
 
@@ -439,10 +568,16 @@ with tab1:
                 st.subheader("📊 ผลลัพธ์ตารางข้อมูล (Query Results)")
                 st.dataframe(df_result, use_container_width=True)
 
-                chart_fig = auto_chart(df_result)
-                if chart_fig is not None:
-                    st.subheader("📈 กราฟประกอบผลลัพธ์")
-                    st.plotly_chart(style_chart_theme(chart_fig), use_container_width=True)
+                charts = generate_charts(df_result)
+                if charts:
+                    st.subheader("📈 การวิเคราะห์เชิงภาพ (Visual Analytics)")
+                    chart_tabs = st.tabs([title for title, _ in charts])
+                    for tab, (title, fig) in zip(chart_tabs, charts):
+                        with tab:
+                            st.plotly_chart(style_chart_theme(fig), use_container_width=True)
+
+                with st.expander("🧮 ตัวเลขสถิติที่คำนวณจริง (Statistical Insights — raw numbers)"):
+                    st.text(compute_statistical_insights(df_result))
             else:
                 st.warning("ไม่พบข้อมูล หรือเกิดข้อผิดพลาดในการรัน SQL")
 
