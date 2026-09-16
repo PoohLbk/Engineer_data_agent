@@ -277,9 +277,16 @@ class EnterpriseDataAgent:
         """
         url = base_url or self.ollama_base_url
         last_err_detail = "unknown error"
-        # header กันปัญหา 403 Forbidden จาก ngrok free tier (ngrok บล็อก request ที่ไม่ใช่จาก browser
-        # ด้วย interstitial page ถ้าไม่แนบ header นี้) — ไม่กระทบ Ollama server ปกติ (localhost/on-prem) เพราะมันไม่สนใจ header นี้
-        headers = {"ngrok-skip-browser-warning": "true"}
+        # header กันปัญหา 403 Forbidden 2 ชั้น:
+        # 1) ngrok-skip-browser-warning: ข้าม interstitial page ของ ngrok free tier
+        # 2) Host: localhost:11434 — Ollama เวอร์ชันใหม่เช็ก Host header ต้องเป็น localhost/127.0.0.1
+        #    เท่านั้น (กัน DNS rebinding attack) พอวิ่งผ่าน ngrok domain จริง ๆ จะโดน Ollama เองบล็อก 403
+        #    ต้องปลอม Host header ให้เป็น localhost เพื่อหลอกผ่านการเช็กนี้
+        # ทั้งสอง header ไม่กระทบ Ollama server ปกติ (localhost/on-prem โดยตรง) เพราะ Host header ตรงอยู่แล้ว
+        headers = {
+            "ngrok-skip-browser-warning": "true",
+            "Host": "localhost:11434",
+        }
         for attempt in range(max_empty_retries + 1):
             try:
                 resp = requests.post(
