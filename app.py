@@ -66,7 +66,7 @@ def generate_charts(df: pd.DataFrame):
     if date_col:
         df_sorted = df.sort_values(by=date_col)
         fig = px.line(df_sorted, x=date_col, y=numeric_cols, markers=True,
-                       title=f"แนวโน้ม {', '.join(numeric_cols)} ตาม {date_col}")
+                        title=f"แนวโน้ม {', '.join(numeric_cols)} ตาม {date_col}")
         charts.append(("แนวโน้มตามช่วงเวลา (Trend)", fig))
 
     # 2) มีคอลัมน์หมวดหมู่ + ตัวเลข -> Bar / Pie / Pareto
@@ -83,7 +83,7 @@ def generate_charts(df: pd.DataFrame):
         # Pie chart — เฉพาะกรณีหมวดหมู่ไม่เยอะเกินไป (สัดส่วนอ่านง่าย)
         if grouped[cat_col].nunique() <= 8:
             fig_pie = px.pie(grouped, names=cat_col, values=y_col,
-                              title=f"สัดส่วน {y_col} ตาม {cat_col}", hole=0.35)
+                             title=f"สัดส่วน {y_col} ตาม {cat_col}", hole=0.35)
             charts.append(("สัดส่วนโดยรวม (Pie)", fig_pie))
 
         # Pareto chart (80/20) — เฉพาะกรณีมีหลายหมวดหมู่พอจะวิเคราะห์
@@ -103,7 +103,7 @@ def generate_charts(df: pd.DataFrame):
                     secondary_y=True,
                 )
                 fig_pareto.add_hline(y=80, line_dash="dot", secondary_y=True,
-                                      annotation_text="เส้น 80%")
+                                     annotation_text="เส้น 80%")
                 fig_pareto.update_layout(title=f"Pareto Analysis: {y_col} ตาม {cat_col} (กฎ 80/20)")
                 fig_pareto.update_yaxes(title_text=y_col, secondary_y=False)
                 fig_pareto.update_yaxes(title_text="สัดส่วนสะสม (%)", range=[0, 110], secondary_y=True)
@@ -112,7 +112,7 @@ def generate_charts(df: pd.DataFrame):
     # 3) ไม่มีคอลัมน์หมวดหมู่/วันที่ แต่มีตัวเลขตั้งแต่ 2 คอลัมน์ -> Scatter
     if not date_col and not non_numeric_cols and len(numeric_cols) >= 2:
         fig_scatter = px.scatter(df, x=numeric_cols[0], y=numeric_cols[1],
-                                  title=f"{numeric_cols[1]} เทียบกับ {numeric_cols[0]}")
+                                 title=f"{numeric_cols[1]} เทียบกับ {numeric_cols[0]}")
         charts.append(("ความสัมพันธ์ระหว่างตัวแปร (Scatter)", fig_scatter))
 
     return charts
@@ -277,16 +277,18 @@ class EnterpriseDataAgent:
         """
         url = base_url or self.ollama_base_url
         last_err_detail = "unknown error"
-        # header กันปัญหา 403 Forbidden 2 ชั้น:
-        # 1) ngrok-skip-browser-warning: ข้าม interstitial page ของ ngrok free tier
-        # 2) Host: localhost:11434 — Ollama เวอร์ชันใหม่เช็ก Host header ต้องเป็น localhost/127.0.0.1
-        #    เท่านั้น (กัน DNS rebinding attack) พอวิ่งผ่าน ngrok domain จริง ๆ จะโดน Ollama เองบล็อก 403
-        #    ต้องปลอม Host header ให้เป็น localhost เพื่อหลอกผ่านการเช็กนี้
-        # ทั้งสอง header ไม่กระทบ Ollama server ปกติ (localhost/on-prem โดยตรง) เพราะ Host header ตรงอยู่แล้ว
+        
+        # แยก Host ออกมาจาก URL ที่ส่งเข้ามา (รองรับทั้งพอร์ต 11434, 11435 หรือ Tunnel ต่างๆ)
+        from urllib.parse import urlparse
+        parsed_url = urlparse(url)
+        target_host = parsed_url.netloc
+
         headers = {
             "ngrok-skip-browser-warning": "true",
-            "Host": "localhost:11434",
+            "Bypass-Tunnel-Reminder": "true",
+            "Host": target_host,
         }
+
         for attempt in range(max_empty_retries + 1):
             try:
                 resp = requests.post(
