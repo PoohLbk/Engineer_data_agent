@@ -201,16 +201,20 @@ class OllamaConnectionError(RuntimeError):
 
 
 class EnterpriseDataAgent:
-    def __init__(self):
-        # 1. ดึง GEMINI_API_KEY จาก Streamlit Secrets หรือ Environment Variable
-        api_key = None
-        try:
-            if "GEMINI_API_KEY" in st.secrets:
-                api_key = st.secrets["GEMINI_API_KEY"]
-            else:
+    def __init__(self, api_key: str = None):
+        """
+        api_key: ระบุ Gemini API Key เองได้โดยตรง (เช่น จาก UI ให้ผู้ใช้กรอกเอง)
+        ถ้าไม่ระบุ (None) จะ fallback ไปดึงจาก Streamlit Secrets หรือ Environment Variable ตามเดิม
+        """
+        # 1. ใช้ api_key ที่ส่งเข้ามาก่อน ถ้าไม่มีค่อย fallback ไป Streamlit Secrets / Environment Variable
+        if not api_key:
+            try:
+                if "GEMINI_API_KEY" in st.secrets:
+                    api_key = st.secrets["GEMINI_API_KEY"]
+                else:
+                    api_key = os.environ.get("GEMINI_API_KEY")
+            except Exception:
                 api_key = os.environ.get("GEMINI_API_KEY")
-        except Exception:
-            api_key = os.environ.get("GEMINI_API_KEY")
 
         # 2. เริ่มต้นสร้าง Gemini Client
         if api_key:
@@ -645,11 +649,22 @@ def style_chart_theme(fig):
 
 
 @st.cache_resource
-def load_agent():
-    return EnterpriseDataAgent()
+def load_agent(api_key: str = None):
+    return EnterpriseDataAgent(api_key=api_key) if api_key else EnterpriseDataAgent()
+
+# ถ้าไม่ได้ตั้งค่า GEMINI_API_KEY ไว้ใน Streamlit Secrets/Environment Variable
+# ให้ผู้ใช้กรอกเองในหน้า UI ได้ (มีประโยชน์เวลารันทดสอบในเครื่อง หรือแชร์แอปให้คนอื่นลองโดยไม่ต้องแตะ secrets.toml)
+manual_api_key = None
+try:
+    _has_secret_key = "GEMINI_API_KEY" in st.secrets
+except Exception:
+    _has_secret_key = False
+if not _has_secret_key and not os.environ.get("GEMINI_API_KEY"):
+    with st.expander("🔑 ยังไม่ได้ตั้งค่า GEMINI_API_KEY — กรอกที่นี่ชั่วคราว (ไม่บันทึกถาวร)"):
+        manual_api_key = st.text_input("Gemini API Key", type="password", key="manual_api_key_input")
 
 with st.spinner("กำลังเชื่อมต่อฐานข้อมูล และสร้าง Data Engine Views..."):
-    agent = load_agent()
+    agent = load_agent(api_key=manual_api_key)
 
 st.markdown(
     """
