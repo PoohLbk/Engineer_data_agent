@@ -256,17 +256,21 @@ class EnterpriseDataAgent:
             )
             return response.text
 
-    def _call_ollama(self, prompt, model_name, max_empty_retries=1):
+    def _call_ollama(self, prompt, model_name, max_empty_retries=1, base_url=None):
         """
-        เรียกโมเดล Local ผ่าน Ollama REST API (http://localhost:11434/api/generate)
+        เรียกโมเดล Local ผ่าน Ollama REST API
+        base_url: ที่อยู่ Ollama server — ถ้าไม่ระบุจะใช้ self.ollama_base_url (default: localhost)
+        องค์กรขนาดใหญ่สามารถชี้ไปที่ on-prem inference server ภายใน network ของตัวเองได้ผ่านค่านี้
+        เพื่อให้ schema/ข้อมูล/prompt ไม่ต้องออกจากเครือข่ายองค์กรเลย (Data Privacy)
         มีการเช็ก Empty Response โดยเฉพาะ เพราะเป็นจุดอ่อนที่วัดได้จริงของโมเดล Local
         (เช่น CodeLlama 7B พบ Empty Response ถึง 65/150 จาก benchmark) และ retry สั้น ๆ ก่อนยอมแพ้
         """
+        url = base_url or self.ollama_base_url
         last_err_detail = "unknown error"
         for attempt in range(max_empty_retries + 1):
             try:
                 resp = requests.post(
-                    f"{self.ollama_base_url}/api/generate",
+                    f"{url}/api/generate",
                     json={"model": model_name, "prompt": prompt, "stream": False},
                     timeout=120,
                 )
@@ -278,28 +282,29 @@ class EnterpriseDataAgent:
                 print(f"[Ollama] {last_err_detail} — attempt {attempt + 1}/{max_empty_retries + 1}")
             except requests.exceptions.ConnectionError:
                 raise RuntimeError(
-                    f"เชื่อมต่อ Ollama ไม่ได้ที่ {self.ollama_base_url} — "
-                    "ตรวจสอบว่ารัน `ollama serve` อยู่ และ pull โมเดล "
-                    f"'{model_name}' ไว้แล้ว (`ollama pull {model_name}`)"
+                    f"เชื่อมต่อ Ollama ไม่ได้ที่ {url} — "
+                    "ตรวจสอบว่ารัน `ollama serve` อยู่ (หรือชี้ URL ไปที่ on-prem server ของหน่วยงานให้ถูกต้อง) "
+                    f"และ pull โมเดล '{model_name}' ไว้แล้ว (`ollama pull {model_name}`)"
                 )
             except requests.exceptions.RequestException as e:
                 raise RuntimeError(f"Ollama API error: {e}")
 
         raise RuntimeError(last_err_detail)
 
-    def _call_llm(self, prompt, engine="cloud", local_model=None):
+    def _call_llm(self, prompt, engine="cloud", local_model=None, ollama_url=None):
         """
         Dispatcher กลาง — สลับระหว่าง Cloud Engine (Gemini API) กับ Local Engine (Ollama)
         engine: "cloud" หรือ "local"
         local_model: ชื่อโมเดลบน Ollama เช่น "qwen2.5-coder:7b", "codellama:7b" (จำเป็นเมื่อ engine="local")
+        ollama_url: ที่อยู่ Ollama server แบบระบุเอง (สำหรับ on-prem server ขององค์กร)
         """
         if engine == "local":
             if not local_model:
                 raise ValueError("ต้องระบุ local_model เมื่อเลือกใช้ Local Engine")
-            return self._call_ollama(prompt, local_model)
+            return self._call_ollama(prompt, local_model, base_url=ollama_url)
         return self._call_gemini_with_fallback(prompt)
 
-    def execute_with_self_correction(self, user_query, engine="cloud", local_model=None, max_attempts=3):
+    def execute_with_self_correction(self, user_query, engine="cloud", local_model=None, ollama_url=None, max_attempts=3):
         logs = [f"Received query: {user_query}", f"Engine: {engine}" + (f" ({local_model})" if local_model else "")]
 
         if engine == "cloud" and not self.client:
@@ -333,7 +338,7 @@ class EnterpriseDataAgent:
 
         for attempt in range(1, max_attempts + 1):
             try:
-                raw_response = self._call_llm(prompt, engine=engine, local_model=local_model)
+                raw_response = self._call_llm(prompt, engine=engine, local_model=local_model, ollama_url=ollama_url)
                 sql_query = raw_response.strip().replace("```sql", "").replace("```", "").strip()
                 if not sql_query:
                     raise RuntimeError("โมเดลตอบกลับว่างเปล่า (Empty Response) ไม่มี SQL ให้รัน")
@@ -367,7 +372,7 @@ class EnterpriseDataAgent:
 
 
 
-    def generate_executive_summary(self, user_query, df_result, engine="cloud", local_model=None):
+    def generate_executive_summary(self, user_query, df_result, engine="cloud", local_model=None, ollama_url=None):
         if df_result is None or df_result.empty:
             return "ไม่พบข้อมูลสำหรับสรุปผลลัพธ์"
 
@@ -400,7 +405,7 @@ class EnterpriseDataAgent:
         """
 
         try:
-            summary_text = self._call_llm(prompt, engine=engine, local_model=local_model)
+            summary_text = self._call_llm(prompt, engine=engine, local_model=local_model, ollama_url=ollama_url)
             if not summary_text.strip():
                 return "โมเดล Local ตอบกลับว่างเปล่า (Empty Response) — ลองเปลี่ยนเป็น Qwen2.5-Coder หรือสลับไปใช้ Cloud Engine"
             return summary_text.strip()
@@ -537,6 +542,24 @@ h1, h2, h3 {{
     border: 1px solid {COLOR_BORDER} !important;
     color: {COLOR_TEXT} !important;
 }}
+.privacy-badge {{
+    display: inline-block;
+    font-size: 0.78rem;
+    font-family: 'IBM Plex Sans', sans-serif;
+    padding: 5px 12px;
+    border-radius: 20px;
+    margin: 6px 0 2px 0;
+}}
+.privacy-badge.local {{
+    background: rgba(63, 167, 150, 0.15);
+    color: {COLOR_ACCENT_SOFT};
+    border: 1px solid {COLOR_ACCENT_SOFT};
+}}
+.privacy-badge.cloud {{
+    background: rgba(193, 88, 76, 0.12);
+    color: #D98A80;
+    border: 1px solid #C1584C;
+}}
 </style>
 """
 
@@ -641,6 +664,7 @@ with st.container(border=True):
     engine = "cloud" if engine_choice.startswith("☁️") else "local"
 
     local_model = None
+    ollama_url = None
     if engine == "local":
         model_keys = list(LOCAL_MODEL_INFO.keys())
         default_idx = model_keys.index("qwen2.5-coder:7b")
@@ -656,12 +680,28 @@ with st.container(border=True):
         st.caption(f"📊 Accuracy (benchmark 150 ข้อ): {info['accuracy_label']}")
         st.caption(f"⚠️ Empty Response: {info['empty_response_label']}")
         st.caption(f"ℹ️ {info['note']}")
-        st.caption(
-            f"ต้องรัน Ollama ในเครื่อง (`ollama serve`) และ pull โมเดลนี้ไว้ก่อน "
-            f"(`ollama pull {local_model}`) — ไม่ต้องใช้ API Key"
+
+        ollama_url = st.text_input(
+            "Ollama Server URL (on-prem ภายในองค์กร)",
+            value=agent.ollama_base_url,
+            help="ชี้ไปที่ Ollama server ภายใน network ขององค์กร (เช่น http://10.0.x.x:11434) "
+                 "หรือปล่อย localhost ไว้ถ้ารันบนเครื่องเดียวกัน",
+            key="ollama_url_input",
+        )
+        st.markdown(
+            '<span class="privacy-badge local">🔒 Data Privacy: schema, ผลลัพธ์ query และ prompt '
+            'จะถูกส่งไปยัง Ollama server ที่ระบุเท่านั้น — ไม่ออกนอกเครือข่ายองค์กร ไม่มีการส่งไป Google '
+            'หรือ Cloud ภายนอกใด ๆ เหมาะสำหรับข้อมูลลูกค้า/ยอดขายที่มีความอ่อนไหว</span>',
+            unsafe_allow_html=True,
         )
     else:
         st.caption("ใช้ Gemini API ผ่าน Cloud — ต้องตั้งค่า GEMINI_API_KEY")
+        st.markdown(
+            '<span class="privacy-badge cloud">⚠️ Data Privacy: schema ตาราง และตัวอย่างผลลัพธ์ query '
+            '(สูงสุด 20 แถว) จะถูกส่งออกไปยัง Google Gemini API ซึ่งเป็น Cloud ภายนอกองค์กร '
+            'หากข้อมูลมีความอ่อนไหวสูง แนะนำสลับไปใช้ Local Engine</span>',
+            unsafe_allow_html=True,
+        )
 
 tab1, tab2 = st.tabs(["💬 AI Query Engine", "🔍 Data Schema Explorer"])
 
@@ -672,7 +712,7 @@ with tab1:
         if user_query:
             with st.spinner("กำลังสร้างคำสั่ง SQL และดึงข้อมูล..."):
                 df_result, final_sql, logs = agent.execute_with_self_correction(
-                    user_query, engine=engine, local_model=local_model
+                    user_query, engine=engine, local_model=local_model, ollama_url=ollama_url
                 )
 
             if df_result is not None and not df_result.empty:
@@ -681,7 +721,7 @@ with tab1:
                 st.subheader("💡 บทสรุปการวิเคราะห์ (Executive Summary)")
                 with st.spinner("กำลังวิเคราะห์และสรุป Insight..."):
                     summary = agent.generate_executive_summary(
-                        user_query, df_result, engine=engine, local_model=local_model
+                        user_query, df_result, engine=engine, local_model=local_model, ollama_url=ollama_url
                     )
                 st.write(summary)
 
