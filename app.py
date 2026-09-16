@@ -331,9 +331,15 @@ class EnterpriseDataAgent:
         schema_info = ""
         tables = self.con.execute("SHOW TABLES").fetchall()
         for t in tables:
+            if not t:
+                continue
             t_name = t[0]
-            cols = self.con.execute(f"DESCRIBE {t_name}").fetchall()
-            col_str = ", ".join([f"{c[0]} ({c[1]})" for c in cols])
+            try:
+                cols = self.con.execute(f"DESCRIBE {t_name}").fetchall()
+            except Exception as e:
+                print(f"[Schema] ข้าม table '{t_name}' เพราะ DESCRIBE ล้มเหลว: {e}")
+                continue
+            col_str = ", ".join([f"{c[0]} ({c[1]})" for c in cols if len(c) >= 2])
             schema_info += f"Table {t_name}: {col_str}\n"
 
         base_prompt = f"""
@@ -784,15 +790,21 @@ with tab2:
 
     tables = agent.con.execute("SHOW TABLES").fetchall()
     for t in tables:
+        if not t:
+            continue
         t_name = t[0]
-        cols = agent.con.execute(f"DESCRIBE {t_name}").fetchall()
+        try:
+            cols = agent.con.execute(f"DESCRIBE {t_name}").fetchall()
+        except Exception as e:
+            st.warning(f"⚠️ ข้าม table '{t_name}' เพราะโหลด schema ไม่ได้: {e}")
+            continue
 
-        col_names = [c[0] for c in cols]
+        col_names = [c[0] for c in cols if len(c) >= 1]
         if search_term.lower() in t_name.lower() or any(search_term.lower() in c.lower() for c in col_names):
             with st.expander(f"📌 Table: {t_name}", expanded=False):
                 st.markdown("**📌 Data Types & Schema:**")
                 st.dataframe(
-                    [{"Column Name": c[0], "Data Type": c[1]} for c in cols],
+                    [{"Column Name": c[0], "Data Type": c[1]} for c in cols if len(c) >= 2],
                     use_container_width=True
                 )
 
