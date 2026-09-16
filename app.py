@@ -275,13 +275,17 @@ class EnterpriseDataAgent:
         มีการเช็ก Empty Response โดยเฉพาะ เพราะเป็นจุดอ่อนที่วัดได้จริงของโมเดล Local
         (เช่น CodeLlama 7B พบ Empty Response ถึง 65/150 จาก benchmark) และ retry สั้น ๆ ก่อนยอมแพ้
         """
-        url = base_url or self.ollama_base_url
+        url = (base_url or self.ollama_base_url or "").strip().rstrip("/")
         last_err_detail = "unknown error"
-        
-        # แยก Host ออกมาจาก URL ที่ส่งเข้ามา (รองรับทั้งพอร์ต 11434, 11435 หรือ Tunnel ต่างๆ)
-        from urllib.parse import urlparse
-        parsed_url = urlparse(url)
-        target_host = parsed_url.netloc
+
+        # กันเคสง่าย ๆ ที่สุด: ไม่ได้กรอก URL มาเลย หรือกรอกแค่ host ไม่มี scheme
+        if not url:
+            raise OllamaConnectionError("ยังไม่ได้ระบุ Ollama Server URL")
+        if not url.startswith("http://") and not url.startswith("https://"):
+            raise OllamaConnectionError(
+                f"Ollama Server URL '{url}' ไม่มี http:// หรือ https:// นำหน้า — "
+                "ลองแก้เป็น http://localhost:11434"
+            )
 
         headers = {
             "ngrok-skip-browser-warning": "true",
@@ -303,14 +307,31 @@ class EnterpriseDataAgent:
                     return text
                 last_err_detail = "Empty Response จากโมเดล Local (โมเดลตอบกลับว่างเปล่า)"
                 print(f"[Ollama] {last_err_detail} — attempt {attempt + 1}/{max_empty_retries + 1}")
-            except requests.exceptions.ConnectionError:
+            except requests.exceptions.ConnectionError as e:
+                # เก็บรายละเอียด exception จริงไว้ด้วย (DEBUG) แทนที่จะโยนแค่ข้อความ generic
+                # เพื่อไล่ปัญหาได้ตรงจุดกว่าเดิม เช่น "Connection refused" vs DNS fail vs อื่น ๆ
                 raise OllamaConnectionError(
                     f"เชื่อมต่อ Ollama ไม่ได้ที่ {url} — "
+                    f"[DEBUG: {type(e).__name__}: {e}] "
                     "ตรวจสอบว่ารัน `ollama serve` อยู่ (หรือชี้ URL ไปที่ on-prem server ของหน่วยงานให้ถูกต้อง) "
                     f"และ pull โมเดล '{model_name}' ไว้แล้ว (`ollama pull {model_name}`)"
                 )
+            except requests.exceptions.HTTPError as e:
+                # แยก HTTP error (เช่น 404/405) ออกจาก connection error — สาเหตุคนละแบบกันเลย
+                # 404/405 มักแปลว่า "ต่อ Ollama ได้แล้ว" แต่ path/URL ที่ชี้ไปผิด (เช่นเผลอชี้ไป Streamlit เอง)
+                raise RuntimeError(
+                    f"Ollama ตอบกลับด้วย HTTP error ({resp.status_code}) ที่ {url}/api/generate — "
+                    f"[DEBUG: {e}] "
+                    "มักแปลว่า URL ที่กรอกไม่ใช่ Ollama จริง ๆ (เช่น พอร์ตของแอปอื่นที่ไม่ใช่ 11434) "
+                    "ลองเช็คว่า URL เป็น http://localhost:11434 (หรือ URL ของ on-prem server ที่ถูกต้อง)"
+                )
+            except requests.exceptions.Timeout as e:
+                raise RuntimeError(
+                    f"Ollama ที่ {url} ไม่ตอบสนองภายในเวลาที่กำหนด (timeout) — [DEBUG: {e}] "
+                    "โมเดลอาจกำลังโหลดครั้งแรกหรือเครื่องload หนักเกินไป ลองใหม่อีกครั้ง"
+                )
             except requests.exceptions.RequestException as e:
-                raise RuntimeError(f"Ollama API error: {e}")
+                raise RuntimeError(f"Ollama API error: [DEBUG: {type(e).__name__}: {e}]")
 
         raise RuntimeError(last_err_detail)
 
@@ -329,6 +350,8 @@ class EnterpriseDataAgent:
 
     def execute_with_self_correction(self, user_query, engine="cloud", local_model=None, ollama_url=None, max_attempts=3):
         logs = [f"Received query: {user_query}", f"Engine: {engine}" + (f" ({local_model})" if local_model else "")]
+        if engine == "local":
+            logs.append(f"Ollama URL ที่ใช้จริง: {ollama_url!r}")
 
         if engine == "cloud" and not self.client:
             logs.append("Execution Error: GEMINI_API_KEY is missing.")
@@ -728,13 +751,21 @@ with st.container(border=True):
         st.caption(f"⚠️ Empty Response: {info['empty_response_label']}")
         st.caption(f"ℹ️ {info['note']}")
 
+        # ค่า default ตั้งไว้ที่ localhost:11434 (พอร์ตของ Ollama) เสมอ
+        # หมายเหตุ: ห้ามเผลอใส่พอร์ตของแอป Streamlit เอง (มักเป็น 8501) ลงในช่องนี้
         ollama_url = st.text_input(
             "Ollama Server URL (on-prem ภายในองค์กร)",
             value=agent.ollama_base_url,
             help="ชี้ไปที่ Ollama server ภายใน network ขององค์กร (เช่น http://10.0.x.x:11434) "
-                 "หรือปล่อย localhost ไว้ถ้ารันบนเครื่องเดียวกัน",
+                 "หรือปล่อย localhost ไว้ถ้ารันบนเครื่องเดียวกัน (default: http://localhost:11434 "
+                 "— ไม่ใช่พอร์ตของแอป Streamlit เอง)",
             key="ollama_url_input",
         )
+
+        # DEBUG: โชว์ค่า URL ที่ widget เก็บไว้จริง ๆ ตอนนี้ (ช่วยจับเคส session state ค้างค่าเก่า
+        # หรือพิมพ์ผิดพลาด เช่น เผลอใส่พอร์ตของแอปเองแทนพอร์ตของ Ollama)
+        st.caption(f"🔧 DEBUG: ค่า Ollama URL ที่จะใช้จริง = {ollama_url!r}")
+
         st.markdown(
             '<span class="privacy-badge local">🔒 Data Privacy: schema, ผลลัพธ์ query และ prompt '
             'จะถูกส่งไปยัง Ollama server ที่ระบุเท่านั้น — ไม่ออกนอกเครือข่ายองค์กร ไม่มีการส่งไป Google '
