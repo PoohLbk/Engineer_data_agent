@@ -277,11 +277,15 @@ class EnterpriseDataAgent:
         """
         url = base_url or self.ollama_base_url
         last_err_detail = "unknown error"
+        # header กันปัญหา 403 Forbidden จาก ngrok free tier (ngrok บล็อก request ที่ไม่ใช่จาก browser
+        # ด้วย interstitial page ถ้าไม่แนบ header นี้) — ไม่กระทบ Ollama server ปกติ (localhost/on-prem) เพราะมันไม่สนใจ header นี้
+        headers = {"ngrok-skip-browser-warning": "true"}
         for attempt in range(max_empty_retries + 1):
             try:
                 resp = requests.post(
                     f"{url}/api/generate",
                     json={"model": model_name, "prompt": prompt, "stream": False},
+                    headers=headers,
                     timeout=120,
                 )
                 resp.raise_for_status()
