@@ -1,11 +1,34 @@
 import os
 import duckdb
 import pandas as pd
+import requests
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from google import genai
+
+
+# ------------------------------------------
+# Local Engine (Ollama) — benchmark ที่วัดได้จริงบน dataset ทดสอบ 150 ข้อ
+# แสดงให้ผู้ใช้เห็นก่อนเลือก เพื่อความโปร่งใสเชิงวิจัย (ใช้ประกอบเล่ม Senior Project ได้)
+# ------------------------------------------
+LOCAL_MODEL_INFO = {
+    "qwen2.5-coder:7b": {
+        "display_name": "Qwen2.5-Coder 7B",
+        "recommended": True,
+        "accuracy_label": "19.33% (29/150)",
+        "empty_response_label": "0/150 — ไม่พบอาการตอบกลับว่างเปล่าเลย",
+        "note": "Best Operational Local Model: ความแม่นยำต่ำกว่า CodeLlama เล็กน้อย แต่เสถียรที่สุด ตอบกลับครบทุกข้อ",
+    },
+    "codellama:7b": {
+        "display_name": "CodeLlama 7B",
+        "recommended": False,
+        "accuracy_label": "22.00% (33/150) — แม่นยำสูงสุดในกลุ่ม Local",
+        "empty_response_label": "65/150 (~43%) — พบอัตราตอบกลับว่างเปล่าสูง",
+        "note": "แม่นยำที่สุดแต่เสี่ยง Empty Response สูง เหมาะกับงานทดลอง/เปรียบเทียบเชิงวิจัยมากกว่าใช้งานจริง",
+    },
+}
 
 
 def _find_datetime_col(df: pd.DataFrame):
@@ -190,9 +213,12 @@ class EnterpriseDataAgent:
             self.client = None
             print("Warning: GEMINI_API_KEY not found.")
 
-        # ตั้งค่าโมเดลหลักและโมเดลสำรองให้เป็นรุ่นที่รองรับบน API ปัจจุบัน
+        # ตั้งค่าโมเดลหลักและโมเดลสำรองให้เป็นรุ่นที่รองรับบน API ปัจจุบัน (Cloud Engine)
         self.primary_model = "gemini-3.6-flash"
         self.fallback_model = "gemini-3.5-flash"
+
+        # ตั้งค่า Local Engine (Ollama) — รันบนเครื่อง ไม่ต้องใช้ API Key
+        self.ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
         # 3. เชื่อมต่อ DuckDB ใน Memory
         self.con = duckdb.connect(database=':memory:')
@@ -230,11 +256,57 @@ class EnterpriseDataAgent:
             )
             return response.text
 
-    def execute_with_self_correction(self, user_query, max_attempts=3):
-        logs = [f"Received query: {user_query}"]
+    def _call_ollama(self, prompt, model_name, max_empty_retries=1):
+        """
+        เรียกโมเดล Local ผ่าน Ollama REST API (http://localhost:11434/api/generate)
+        มีการเช็ก Empty Response โดยเฉพาะ เพราะเป็นจุดอ่อนที่วัดได้จริงของโมเดล Local
+        (เช่น CodeLlama 7B พบ Empty Response ถึง 65/150 จาก benchmark) และ retry สั้น ๆ ก่อนยอมแพ้
+        """
+        last_err_detail = "unknown error"
+        for attempt in range(max_empty_retries + 1):
+            try:
+                resp = requests.post(
+                    f"{self.ollama_base_url}/api/generate",
+                    json={"model": model_name, "prompt": prompt, "stream": False},
+                    timeout=120,
+                )
+                resp.raise_for_status()
+                text = resp.json().get("response", "").strip()
+                if text:
+                    return text
+                last_err_detail = "Empty Response จากโมเดล Local (โมเดลตอบกลับว่างเปล่า)"
+                print(f"[Ollama] {last_err_detail} — attempt {attempt + 1}/{max_empty_retries + 1}")
+            except requests.exceptions.ConnectionError:
+                raise RuntimeError(
+                    f"เชื่อมต่อ Ollama ไม่ได้ที่ {self.ollama_base_url} — "
+                    "ตรวจสอบว่ารัน `ollama serve` อยู่ และ pull โมเดล "
+                    f"'{model_name}' ไว้แล้ว (`ollama pull {model_name}`)"
+                )
+            except requests.exceptions.RequestException as e:
+                raise RuntimeError(f"Ollama API error: {e}")
 
-        if not self.client:
+        raise RuntimeError(last_err_detail)
+
+    def _call_llm(self, prompt, engine="cloud", local_model=None):
+        """
+        Dispatcher กลาง — สลับระหว่าง Cloud Engine (Gemini API) กับ Local Engine (Ollama)
+        engine: "cloud" หรือ "local"
+        local_model: ชื่อโมเดลบน Ollama เช่น "qwen2.5-coder:7b", "codellama:7b" (จำเป็นเมื่อ engine="local")
+        """
+        if engine == "local":
+            if not local_model:
+                raise ValueError("ต้องระบุ local_model เมื่อเลือกใช้ Local Engine")
+            return self._call_ollama(prompt, local_model)
+        return self._call_gemini_with_fallback(prompt)
+
+    def execute_with_self_correction(self, user_query, engine="cloud", local_model=None, max_attempts=3):
+        logs = [f"Received query: {user_query}", f"Engine: {engine}" + (f" ({local_model})" if local_model else "")]
+
+        if engine == "cloud" and not self.client:
             logs.append("Execution Error: GEMINI_API_KEY is missing.")
+            return None, "", logs
+        if engine == "local" and not local_model:
+            logs.append("Execution Error: ยังไม่ได้เลือกโมเดล Local Engine")
             return None, "", logs
 
         schema_info = ""
@@ -261,8 +333,10 @@ class EnterpriseDataAgent:
 
         for attempt in range(1, max_attempts + 1):
             try:
-                raw_response = self._call_gemini_with_fallback(prompt)
+                raw_response = self._call_llm(prompt, engine=engine, local_model=local_model)
                 sql_query = raw_response.strip().replace("```sql", "").replace("```", "").strip()
+                if not sql_query:
+                    raise RuntimeError("โมเดลตอบกลับว่างเปล่า (Empty Response) ไม่มี SQL ให้รัน")
                 logs.append(f"[Attempt {attempt}] Generated SQL: {sql_query}")
 
                 df_result = self.con.execute(sql_query).df()
@@ -273,7 +347,7 @@ class EnterpriseDataAgent:
                 last_error = str(e)
                 logs.append(f"[Attempt {attempt}] Execution Error: {last_error}")
 
-                # ป้อน error กลับไปให้ Gemini แก้ SQL ในรอบถัดไป (Self-Correction)
+                # ป้อน error กลับไปให้โมเดลแก้ SQL ในรอบถัดไป (Self-Correction)
                 prompt = f"""
                 {base_prompt}
 
@@ -292,12 +366,15 @@ class EnterpriseDataAgent:
         return None, sql_query, logs
 
 
-    def generate_executive_summary(self, user_query, df_result):
+
+    def generate_executive_summary(self, user_query, df_result, engine="cloud", local_model=None):
         if df_result is None or df_result.empty:
             return "ไม่พบข้อมูลสำหรับสรุปผลลัพธ์"
 
-        if not self.client:
+        if engine == "cloud" and not self.client:
             return "ไม่สามารถสรุปผลลัพธ์ได้เนื่องจากขาด GEMINI_API_KEY"
+        if engine == "local" and not local_model:
+            return "ไม่สามารถสรุปผลลัพธ์ได้เนื่องจากยังไม่ได้เลือกโมเดล Local Engine"
 
         data_preview = df_result.head(20).to_string(index=False)
         stats_block = compute_statistical_insights(df_result)
@@ -323,7 +400,9 @@ class EnterpriseDataAgent:
         """
 
         try:
-            summary_text = self._call_gemini_with_fallback(prompt)
+            summary_text = self._call_llm(prompt, engine=engine, local_model=local_model)
+            if not summary_text.strip():
+                return "โมเดล Local ตอบกลับว่างเปล่า (Empty Response) — ลองเปลี่ยนเป็น Qwen2.5-Coder หรือสลับไปใช้ Cloud Engine"
             return summary_text.strip()
         except Exception as e:
             return f"เกิดข้อผิดพลาดในการสร้างสรุปผลลัพธ์: {str(e)}"
@@ -547,6 +626,43 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ------------------------------------------
+# Dual Engine Selector: Cloud (Gemini API) vs Local (Ollama)
+# ------------------------------------------
+with st.container(border=True):
+    st.markdown("**⚙️ เลือก AI Engine**")
+    engine_choice = st.radio(
+        "AI Engine",
+        options=["☁️ Cloud (Gemini API)", "💻 Local (Ollama)"],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="engine_choice",
+    )
+    engine = "cloud" if engine_choice.startswith("☁️") else "local"
+
+    local_model = None
+    if engine == "local":
+        model_keys = list(LOCAL_MODEL_INFO.keys())
+        default_idx = model_keys.index("qwen2.5-coder:7b")
+        local_model = st.selectbox(
+            "เลือกโมเดล Local",
+            options=model_keys,
+            index=default_idx,
+            format_func=lambda m: LOCAL_MODEL_INFO[m]["display_name"]
+            + (" ⭐ แนะนำ" if LOCAL_MODEL_INFO[m]["recommended"] else ""),
+            key="local_model_choice",
+        )
+        info = LOCAL_MODEL_INFO[local_model]
+        st.caption(f"📊 Accuracy (benchmark 150 ข้อ): {info['accuracy_label']}")
+        st.caption(f"⚠️ Empty Response: {info['empty_response_label']}")
+        st.caption(f"ℹ️ {info['note']}")
+        st.caption(
+            f"ต้องรัน Ollama ในเครื่อง (`ollama serve`) และ pull โมเดลนี้ไว้ก่อน "
+            f"(`ollama pull {local_model}`) — ไม่ต้องใช้ API Key"
+        )
+    else:
+        st.caption("ใช้ Gemini API ผ่าน Cloud — ต้องตั้งค่า GEMINI_API_KEY")
+
 tab1, tab2 = st.tabs(["💬 AI Query Engine", "🔍 Data Schema Explorer"])
 
 with tab1:
@@ -555,14 +671,18 @@ with tab1:
     if st.button("ประมวลผลคำสั่ง"):
         if user_query:
             with st.spinner("กำลังสร้างคำสั่ง SQL และดึงข้อมูล..."):
-                df_result, final_sql, logs = agent.execute_with_self_correction(user_query)
+                df_result, final_sql, logs = agent.execute_with_self_correction(
+                    user_query, engine=engine, local_model=local_model
+                )
 
             if df_result is not None and not df_result.empty:
                 render_kpi_cards(df_result)
 
                 st.subheader("💡 บทสรุปการวิเคราะห์ (Executive Summary)")
                 with st.spinner("กำลังวิเคราะห์และสรุป Insight..."):
-                    summary = agent.generate_executive_summary(user_query, df_result)
+                    summary = agent.generate_executive_summary(
+                        user_query, df_result, engine=engine, local_model=local_model
+                    )
                 st.write(summary)
 
                 st.subheader("📊 ผลลัพธ์ตารางข้อมูล (Query Results)")
