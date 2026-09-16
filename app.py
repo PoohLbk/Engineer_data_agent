@@ -286,8 +286,7 @@ class EnterpriseDataAgent:
         headers = {
             "ngrok-skip-browser-warning": "true",
             "Bypass-Tunnel-Reminder": "true",
-            "X-Pinggy-No-Screen": "true",  # เพิ่มบรรทัดนี้เพื่อข้ามหน้าเตือนของ Pinggy
-            "Host": target_host,
+            "X-Pinggy-No-Screen": "true",
         }
 
         for attempt in range(max_empty_retries + 1):
