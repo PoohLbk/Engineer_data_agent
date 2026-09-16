@@ -194,6 +194,12 @@ def compute_statistical_insights(df: pd.DataFrame) -> str:
 # ==========================================
 # 1. Class: EnterpriseDataAgent (Data Engine)
 # ==========================================
+class OllamaConnectionError(RuntimeError):
+    """แยกออกมาเฉพาะสำหรับ error ระดับ infrastructure (เชื่อมต่อ Ollama ไม่ได้เลย)
+    เพื่อไม่ให้ self-correction loop เสีย attempt ไป retry ปัญหาที่ retry ไปก็ไม่หาย"""
+    pass
+
+
 class EnterpriseDataAgent:
     def __init__(self):
         # 1. ดึง GEMINI_API_KEY จาก Streamlit Secrets หรือ Environment Variable
@@ -281,7 +287,7 @@ class EnterpriseDataAgent:
                 last_err_detail = "Empty Response จากโมเดล Local (โมเดลตอบกลับว่างเปล่า)"
                 print(f"[Ollama] {last_err_detail} — attempt {attempt + 1}/{max_empty_retries + 1}")
             except requests.exceptions.ConnectionError:
-                raise RuntimeError(
+                raise OllamaConnectionError(
                     f"เชื่อมต่อ Ollama ไม่ได้ที่ {url} — "
                     "ตรวจสอบว่ารัน `ollama serve` อยู่ (หรือชี้ URL ไปที่ on-prem server ของหน่วยงานให้ถูกต้อง) "
                     f"และ pull โมเดล '{model_name}' ไว้แล้ว (`ollama pull {model_name}`)"
@@ -347,6 +353,13 @@ class EnterpriseDataAgent:
                 df_result = self.con.execute(sql_query).df()
                 logs.append(f"[Attempt {attempt}] Success.")
                 return df_result, sql_query, logs
+
+            except OllamaConnectionError as e:
+                # ปัญหาระดับ infrastructure (เชื่อมต่อ Ollama ไม่ได้เลย) — retry ไปก็ไม่มีทางหาย
+                # หยุดทันทีแทนที่จะเสีย attempt ไปวนซ้ำ error เดิม
+                last_error = str(e)
+                logs.append(f"[Attempt {attempt}] Infrastructure Error (หยุดทันที ไม่ retry): {last_error}")
+                break
 
             except Exception as e:
                 last_error = str(e)
