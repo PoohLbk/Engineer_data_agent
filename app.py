@@ -380,7 +380,7 @@ class EnterpriseDataAgent:
                 Return ONLY the raw SQL query without codeblock formatting or explanations.
                 """
 
-        logs.append(f"ล้มเหลวหลังจากพยายาม {max_attempts} ครั้ง: {last_error}")
+        logs.append(f"ล้มเหลวหลังจากพยายาม {attempt} ครั้ง: {last_error}")
         return None, sql_query, logs
 
 
