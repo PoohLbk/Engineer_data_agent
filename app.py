@@ -867,20 +867,51 @@ def build_pdf_report(user_query, df_result, summary_text, stats_text, final_sql,
     pdf.ln(3)
 
     # ตารางข้อมูล (แสดงตัวอย่างสูงสุด 25 แถวแรก กันไฟล์ยาวเกินไป)
+    # ความกว้างคอลัมน์ต้องมีขั้นต่ำไว้เสมอ ไม่งั้นถ้าคอลัมน์เยอะเกินไป (เช่น 10+ คอลัมน์)
+    # หารเท่า ๆ กันแล้วจะแคบจนฟอนต์ใส่ตัวอักษรแม้แค่ตัวเดียวก็ไม่พอ (fpdf2 จะ error ทันที)
     pdf.set_font(pdf.font_family, size=13)
     pdf.set_text_color(20, 20, 20)
     pdf.multi_cell(0, 8, f"ตารางผลลัพธ์ข้อมูล (แสดง {min(25, len(df_result))} จาก {len(df_result)} แถว)")
-    pdf.set_font(pdf.font_family, size=8)
+
+    preview_df_full = df_result.head(25)
+    page_width_mm = 190
+    min_col_width_mm = 22  # ขั้นต่ำต่อคอลัมน์ที่ฟอนต์ไทยขนาด 7-8pt ยังพอใส่ตัวอักษรได้จริง
+    max_cols_fit = max(int(page_width_mm // min_col_width_mm), 1)
+
+    columns_truncated = False
+    if len(preview_df_full.columns) > max_cols_fit:
+        preview_df = preview_df_full.iloc[:, :max_cols_fit]
+        columns_truncated = True
+    else:
+        preview_df = preview_df_full
+
+    n_cols = max(len(preview_df.columns), 1)
+    col_width = max(page_width_mm / n_cols, min_col_width_mm)
+
+    # ปรับขนาดฟอนต์ลงถ้าคอลัมน์เยอะ เพื่อให้ตัวอักษรใส่ในช่องได้จริง ไม่ error
+    table_font_size = 8 if n_cols <= 6 else 7
+    pdf.set_font(pdf.font_family, size=table_font_size)
     pdf.set_text_color(40, 40, 40)
-    preview_df = df_result.head(25)
-    col_width = 190 / max(len(preview_df.columns), 1)
+
+    # จำนวนตัวอักษรสูงสุดต่อช่องอิงตามความกว้างจริง กันข้อความล้นช่อง (โดยเฉพาะฟอนต์ไทยที่กว้างกว่า Latin)
+    max_chars = max(int(col_width / 2.2), 4)
+
     for col in preview_df.columns:
-        pdf.cell(col_width, 6, str(col)[:18], border=1)
+        pdf.cell(col_width, 6, str(col)[:max_chars], border=1)
     pdf.ln()
     for _, row in preview_df.iterrows():
         for val in row:
-            pdf.cell(col_width, 6, str(val)[:18], border=1)
+            pdf.cell(col_width, 6, str(val)[:max_chars], border=1)
         pdf.ln()
+
+    if columns_truncated:
+        pdf.set_font(pdf.font_family, size=8)
+        pdf.set_text_color(120, 120, 120)
+        pdf.multi_cell(
+            0, 6,
+            f"หมายเหตุ: ตารางมีทั้งหมด {len(preview_df_full.columns)} คอลัมน์ "
+            f"แสดงใน PDF นี้เพียง {max_cols_fit} คอลัมน์แรก (ดูข้อมูลครบทุกคอลัมน์ได้จากไฟล์ Excel แทน)"
+        )
     pdf.ln(4)
 
     # กราฟ — แปลง Plotly fig เป็นรูปด้วย kaleido แล้วฝังลง PDF
