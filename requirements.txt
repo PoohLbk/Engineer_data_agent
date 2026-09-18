@@ -4,6 +4,4 @@ google-genai
 pandas
 plotly
 requests
-kaleido==0.2.1
 openpyxl
-fpdf2
