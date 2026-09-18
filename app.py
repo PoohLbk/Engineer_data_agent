@@ -874,44 +874,58 @@ def build_pdf_report(user_query, df_result, summary_text, stats_text, final_sql,
     pdf.multi_cell(0, 8, f"ตารางผลลัพธ์ข้อมูล (แสดง {min(25, len(df_result))} จาก {len(df_result)} แถว)")
 
     preview_df_full = df_result.head(25)
-    page_width_mm = 190
-    min_col_width_mm = 22  # ขั้นต่ำต่อคอลัมน์ที่ฟอนต์ไทยขนาด 7-8pt ยังพอใส่ตัวอักษรได้จริง
-    max_cols_fit = max(int(page_width_mm // min_col_width_mm), 1)
 
-    columns_truncated = False
-    if len(preview_df_full.columns) > max_cols_fit:
-        preview_df = preview_df_full.iloc[:, :max_cols_fit]
-        columns_truncated = True
-    else:
-        preview_df = preview_df_full
+    try:
+        page_width_mm = 190
+        min_col_width_mm = 22  # ขั้นต่ำต่อคอลัมน์ที่ฟอนต์ไทยขนาด 7-8pt ยังพอใส่ตัวอักษรได้จริง
+        max_cols_fit = max(int(page_width_mm // min_col_width_mm), 1)
 
-    n_cols = max(len(preview_df.columns), 1)
-    col_width = max(page_width_mm / n_cols, min_col_width_mm)
+        columns_truncated = False
+        if len(preview_df_full.columns) > max_cols_fit:
+            preview_df = preview_df_full.iloc[:, :max_cols_fit]
+            columns_truncated = True
+        else:
+            preview_df = preview_df_full
 
-    # ปรับขนาดฟอนต์ลงถ้าคอลัมน์เยอะ เพื่อให้ตัวอักษรใส่ในช่องได้จริง ไม่ error
-    table_font_size = 8 if n_cols <= 6 else 7
-    pdf.set_font(pdf.font_family, size=table_font_size)
-    pdf.set_text_color(40, 40, 40)
+        n_cols = max(len(preview_df.columns), 1)
+        col_width = max(page_width_mm / n_cols, min_col_width_mm)
 
-    # จำนวนตัวอักษรสูงสุดต่อช่องอิงตามความกว้างจริง กันข้อความล้นช่อง (โดยเฉพาะฟอนต์ไทยที่กว้างกว่า Latin)
-    max_chars = max(int(col_width / 2.2), 4)
+        # ปรับขนาดฟอนต์ลงถ้าคอลัมน์เยอะ เพื่อให้ตัวอักษรใส่ในช่องได้จริง ไม่ error
+        table_font_size = 8 if n_cols <= 6 else 7
+        pdf.set_font(pdf.font_family, size=table_font_size)
+        pdf.set_text_color(40, 40, 40)
 
-    for col in preview_df.columns:
-        pdf.cell(col_width, 6, str(col)[:max_chars], border=1)
-    pdf.ln()
-    for _, row in preview_df.iterrows():
-        for val in row:
-            pdf.cell(col_width, 6, str(val)[:max_chars], border=1)
+        # จำนวนตัวอักษรสูงสุดต่อช่องอิงตามความกว้างจริง กันข้อความล้นช่อง (โดยเฉพาะฟอนต์ไทยที่กว้างกว่า Latin)
+        max_chars = max(int(col_width / 2.2), 4)
+
+        for col in preview_df.columns:
+            pdf.cell(col_width, 6, str(col)[:max_chars], border=1)
         pdf.ln()
+        for _, row in preview_df.iterrows():
+            for val in row:
+                pdf.cell(col_width, 6, str(val)[:max_chars], border=1)
+            pdf.ln()
 
-    if columns_truncated:
-        pdf.set_font(pdf.font_family, size=8)
-        pdf.set_text_color(120, 120, 120)
-        pdf.multi_cell(
-            0, 6,
-            f"หมายเหตุ: ตารางมีทั้งหมด {len(preview_df_full.columns)} คอลัมน์ "
-            f"แสดงใน PDF นี้เพียง {max_cols_fit} คอลัมน์แรก (ดูข้อมูลครบทุกคอลัมน์ได้จากไฟล์ Excel แทน)"
-        )
+        if columns_truncated:
+            pdf.set_font(pdf.font_family, size=8)
+            pdf.set_text_color(120, 120, 120)
+            pdf.multi_cell(
+                0, 6,
+                f"หมายเหตุ: ตารางมีทั้งหมด {len(preview_df_full.columns)} คอลัมน์ "
+                f"แสดงใน PDF นี้เพียง {max_cols_fit} คอลัมน์แรก (ดูข้อมูลครบทุกคอลัมน์ได้จากไฟล์ Excel แทน)"
+            )
+    except Exception:
+        # Safety net: ถ้าโหมดตาราง (fixed-width cell) ยัง error ไม่ว่าเหตุผลอะไรก็ตาม
+        # ให้ fallback มาแสดงแบบ "รายการ" แทน — ใช้ multi_cell(0, ...) ซึ่งกว้างเท่าหน้ากระดาษเสมอ
+        # จึงไม่มีทางเจอปัญหา "ความกว้างไม่พอ" แบบตาราง fixed-width อีก
+        pdf.set_font(pdf.font_family, size=9)
+        pdf.set_text_color(40, 40, 40)
+        pdf.multi_cell(0, 6, "(แสดงผลแบบตารางไม่สำเร็จ จึงแสดงเป็นรายการแทน)")
+        pdf.ln(1)
+        for idx, row in preview_df_full.iterrows():
+            row_text = " | ".join(f"{col}: {val}" for col, val in row.items())
+            pdf.multi_cell(0, 5, row_text)
+            pdf.ln(1)
     pdf.ln(4)
 
     # กราฟ — แปลง Plotly fig เป็นรูปด้วย kaleido แล้วฝังลง PDF
