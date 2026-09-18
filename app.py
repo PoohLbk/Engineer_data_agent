@@ -753,6 +753,167 @@ def style_chart_theme(fig):
     return fig
 
 
+# ==========================================
+# Export Report System — รวมตาราง, กราฟ, Executive Summary ออกเป็น Excel / PDF ได้ในคลิกเดียว
+# ==========================================
+
+# หา Thai font ที่ bundle ไว้เอง (จำเป็นสำหรับ PDF เพราะ fpdf2 ไม่มี font ไทยมาให้ในตัว)
+# ถ้าไม่เจอไฟล์ font จะ fallback ไปใช้ font builtin ซึ่ง "แสดงภาษาไทยไม่ได้" (ขึ้นเป็นกล่องว่าง)
+_THAI_FONT_CANDIDATES = [
+    os.path.join("fonts", "Sarabun-Regular.ttf"),
+    os.path.join("fonts", "THSarabunNew.ttf"),
+    "/usr/share/fonts/truetype/thai/Sarabun-Regular.ttf",
+    "/System/Library/Fonts/Supplemental/Ayuthaya.ttf",  # macOS มักมีฟอนต์นี้ติดเครื่องมาให้ รองรับไทยได้บางส่วน
+]
+
+
+def _find_thai_font_path():
+    for path in _THAI_FONT_CANDIDATES:
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def build_excel_report(user_query, df_result, summary_text, stats_text, final_sql):
+    """
+    สร้างไฟล์ Excel (.xlsx) แบบหลาย sheet:
+    - Sheet 'ข้อมูล' : ตารางผลลัพธ์ query เต็ม ๆ
+    - Sheet 'สรุปผล' : คำถาม, SQL, Executive Summary, สถิติที่คำนวณไว้
+    คืนค่าเป็น bytes พร้อมส่งเข้า st.download_button โดยตรง
+    """
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill
+    from openpyxl.utils.dataframe import dataframe_to_rows
+
+    wb = Workbook()
+
+    # --- Sheet 1: ข้อมูล ---
+    ws_data = wb.active
+    ws_data.title = "ข้อมูล"
+    for row in dataframe_to_rows(df_result, index=False, header=True):
+        ws_data.append(row)
+    header_fill = PatternFill(start_color="C9A227", end_color="C9A227", fill_type="solid")
+    for cell in ws_data[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+    for col_cells in ws_data.columns:
+        max_len = max((len(str(c.value)) for c in col_cells if c.value is not None), default=10)
+        ws_data.column_dimensions[col_cells[0].column_letter].width = min(max_len + 4, 50)
+
+    # --- Sheet 2: สรุปผล ---
+    ws_summary = wb.create_sheet("สรุปผล")
+    ws_summary.column_dimensions["A"].width = 100
+    rows_to_write = [
+        ("คำถามของผู้ใช้", user_query),
+        ("", ""),
+        ("SQL ที่ AI สร้าง", final_sql),
+        ("", ""),
+        ("บทสรุปการวิเคราะห์ (Executive Summary)", ""),
+        (summary_text, ""),
+        ("", ""),
+        ("สถิติที่คำนวณจริง (Statistical Insights)", ""),
+        (stats_text, ""),
+    ]
+    for label, value in rows_to_write:
+        if value:
+            ws_summary.append([f"{label}: {value}"])
+        else:
+            ws_summary.append([label])
+        ws_summary.cell(row=ws_summary.max_row, column=1).alignment = Alignment(wrap_text=True, vertical="top")
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def build_pdf_report(user_query, df_result, summary_text, stats_text, final_sql, chart_figs):
+    """
+    สร้างไฟล์ PDF รวม: คำถาม, Executive Summary, ตารางข้อมูล (preview), กราฟ (แปลงเป็นรูปด้วย kaleido), สถิติ
+    คืนค่าเป็น bytes พร้อมส่งเข้า st.download_button โดยตรง
+    หมายเหตุ: ต้องมี Thai font ไฟล์ (.ttf) วางไว้ในโฟลเดอร์ fonts/ ไม่งั้นข้อความไทยจะแสดงไม่ได้
+    """
+    import io
+    from fpdf import FPDF
+
+    thai_font_path = _find_thai_font_path()
+
+    pdf = FPDF()
+    pdf.add_page()
+
+    if thai_font_path:
+        pdf.add_font("Thai", "", thai_font_path, uni=True)
+        pdf.set_font("Thai", size=16)
+    else:
+        # Fallback: font builtin ไม่รองรับภาษาไทย — เตือนไว้ใน UI แล้วว่าอาจแสดงผลผิดเพี้ยน
+        pdf.set_font("Helvetica", size=16)
+
+    pdf.set_text_color(20, 20, 20)
+    pdf.multi_cell(0, 10, "Enterprise Data Agent — รายงานสรุปผลการวิเคราะห์")
+    pdf.ln(2)
+
+    pdf.set_font(pdf.font_family, size=11)
+    pdf.set_text_color(60, 60, 60)
+    pdf.multi_cell(0, 7, f"คำถามของผู้ใช้: {user_query}")
+    pdf.ln(2)
+
+    pdf.set_font(pdf.font_family, size=13)
+    pdf.set_text_color(20, 20, 20)
+    pdf.multi_cell(0, 8, "บทสรุปการวิเคราะห์ (Executive Summary)")
+    pdf.set_font(pdf.font_family, size=10)
+    pdf.set_text_color(50, 50, 50)
+    pdf.multi_cell(0, 6, summary_text)
+    pdf.ln(3)
+
+    # ตารางข้อมูล (แสดงตัวอย่างสูงสุด 25 แถวแรก กันไฟล์ยาวเกินไป)
+    pdf.set_font(pdf.font_family, size=13)
+    pdf.set_text_color(20, 20, 20)
+    pdf.multi_cell(0, 8, f"ตารางผลลัพธ์ข้อมูล (แสดง {min(25, len(df_result))} จาก {len(df_result)} แถว)")
+    pdf.set_font(pdf.font_family, size=8)
+    pdf.set_text_color(40, 40, 40)
+    preview_df = df_result.head(25)
+    col_width = 190 / max(len(preview_df.columns), 1)
+    for col in preview_df.columns:
+        pdf.cell(col_width, 6, str(col)[:18], border=1)
+    pdf.ln()
+    for _, row in preview_df.iterrows():
+        for val in row:
+            pdf.cell(col_width, 6, str(val)[:18], border=1)
+        pdf.ln()
+    pdf.ln(4)
+
+    # กราฟ — แปลง Plotly fig เป็นรูปด้วย kaleido แล้วฝังลง PDF
+    if chart_figs:
+        for title, fig in chart_figs:
+            try:
+                img_bytes = fig.to_image(format="png", width=900, height=500, scale=2)
+                pdf.set_font(pdf.font_family, size=12)
+                pdf.set_text_color(20, 20, 20)
+                pdf.multi_cell(0, 8, title)
+                img_buf = io.BytesIO(img_bytes)
+                pdf.image(img_buf, w=180)
+                pdf.ln(4)
+            except Exception as e:
+                pdf.set_font(pdf.font_family, size=9)
+                pdf.multi_cell(0, 6, f"[ไม่สามารถสร้างรูปกราฟ '{title}' ได้: {e}]")
+
+    # สถิติที่คำนวณจริง
+    pdf.set_font(pdf.font_family, size=13)
+    pdf.set_text_color(20, 20, 20)
+    pdf.multi_cell(0, 8, "สถิติที่คำนวณจริง (Statistical Insights)")
+    pdf.set_font(pdf.font_family, size=9)
+    pdf.set_text_color(50, 50, 50)
+    pdf.multi_cell(0, 6, stats_text)
+    pdf.ln(4)
+
+    pdf.set_font(pdf.font_family, size=7)
+    pdf.set_text_color(150, 150, 150)
+    pdf.multi_cell(0, 5, f"SQL ที่ใช้: {final_sql}")
+
+    return bytes(pdf.output())
+
+
 @st.cache_resource
 def load_agent(api_key: str = None):
     return EnterpriseDataAgent(api_key=api_key) if api_key else EnterpriseDataAgent()
@@ -856,67 +1017,137 @@ with tab1:
                     user_query, engine=engine, local_model=local_model, ollama_url=ollama_url
                 )
 
+            summary = ""
             if df_result is not None and not df_result.empty:
-                render_kpi_cards(df_result)
-
-                st.subheader("💡 บทสรุปการวิเคราะห์ (Executive Summary)")
                 with st.spinner("กำลังวิเคราะห์และสรุป Insight..."):
                     summary = agent.generate_executive_summary(
                         user_query, df_result, engine=engine, local_model=local_model, ollama_url=ollama_url
                     )
-                st.write(summary)
 
-                st.subheader("📊 ผลลัพธ์ตารางข้อมูล (Query Results)")
-                st.dataframe(df_result, use_container_width=True)
+            # เก็บผลลัพธ์ทั้งหมดไว้ใน session_state — จำเป็นเพราะปุ่ม Feedback/Export
+            # จะทำให้ Streamlit rerun สคริปต์ใหม่ทุกครั้งที่กด ถ้าไม่เก็บไว้ผลลัพธ์จะหายไปทันที
+            st.session_state["last_result"] = {
+                "user_query": user_query,
+                "df_result": df_result,
+                "final_sql": final_sql,
+                "logs": logs,
+                "summary": summary,
+                "engine": engine,
+                "local_model": local_model,
+            }
 
-                charts = generate_charts(df_result)
-                if charts:
-                    st.subheader("📈 การวิเคราะห์เชิงภาพ (Visual Analytics)")
-                    chart_tabs = st.tabs([title for title, _ in charts])
-                    for tab, (title, fig) in zip(chart_tabs, charts):
-                        with tab:
-                            st.plotly_chart(style_chart_theme(fig), use_container_width=True)
+    # --------------------------------------------------
+    # แสดงผลลัพธ์จาก session_state เสมอ (ไม่ใช่แค่ตอนกดปุ่มประมวลผลรอบล่าสุด)
+    # เพื่อให้ผลลัพธ์ไม่หายไปตอนกดปุ่ม Feedback หรือ Export ที่ทำให้หน้าต้อง rerun
+    # --------------------------------------------------
+    result = st.session_state.get("last_result")
+    if result:
+        user_query = result["user_query"]
+        df_result = result["df_result"]
+        final_sql = result["final_sql"]
+        logs = result["logs"]
+        summary = result["summary"]
+        engine = result["engine"]
+        local_model = result["local_model"]
 
-                with st.expander("🧮 ตัวเลขสถิติที่คำนวณจริง (Statistical Insights — raw numbers)"):
-                    st.text(compute_statistical_insights(df_result))
-            else:
-                st.warning("ไม่พบข้อมูล หรือเกิดข้อผิดพลาดในการรัน SQL")
+        if df_result is not None and not df_result.empty:
+            render_kpi_cards(df_result)
 
-            with st.expander("🔍 Audit Logs & Generated SQL Pipeline (สำหรับงานเทคนิค)"):
-                st.code(final_sql, language="sql")
-                for log in logs:
-                    st.write(log)
+            st.subheader("💡 บทสรุปการวิเคราะห์ (Executive Summary)")
+            st.write(summary)
+
+            st.subheader("📊 ผลลัพธ์ตารางข้อมูล (Query Results)")
+            st.dataframe(df_result, use_container_width=True)
+
+            charts = generate_charts(df_result)
+            if charts:
+                st.subheader("📈 การวิเคราะห์เชิงภาพ (Visual Analytics)")
+                chart_tabs = st.tabs([title for title, _ in charts])
+                for tab, (title, fig) in zip(chart_tabs, charts):
+                    with tab:
+                        st.plotly_chart(style_chart_theme(fig), use_container_width=True)
+
+            stats_text = compute_statistical_insights(df_result)
+            with st.expander("🧮 ตัวเลขสถิติที่คำนวณจริง (Statistical Insights — raw numbers)"):
+                st.text(stats_text)
 
             # --------------------------------------------------
-            # Feedback & Rating — ให้ผู้ใช้ประเมิน SQL ที่ AI generate ว่าถูกต้องไหม
-            # เก็บทุกครั้งที่กด ไม่ว่าผลลัพธ์จะว่างหรือมีข้อมูล (เพื่อวัด accuracy ครบทุกกรณี)
+            # Export Report — รวมตาราง, กราฟ, Executive Summary เป็น Excel/PDF ในคลิกเดียว
             # --------------------------------------------------
-            st.markdown("**SQL ที่ AI สร้างถูกต้องไหม?**")
-            fb_col1, fb_col2, fb_col_spacer = st.columns([1, 1, 6])
-            row_count_for_feedback = int(len(df_result)) if df_result is not None else 0
+            st.markdown("**📥 Export รายงานสรุป**")
+            exp_col1, exp_col2, exp_col_spacer = st.columns([1, 1, 4])
 
-            with fb_col1:
-                if st.button("👍 ถูกต้อง", key=f"fb_up_{len(logs)}_{user_query}"):
-                    save_feedback(
-                        user_query=user_query,
-                        generated_sql=final_sql,
-                        engine=engine,
-                        local_model=local_model,
-                        rating="up",
-                        row_count=row_count_for_feedback,
+            with exp_col1:
+                try:
+                    excel_bytes = build_excel_report(user_query, df_result, summary, stats_text, final_sql)
+                    st.download_button(
+                        "📊 ดาวน์โหลด Excel",
+                        data=excel_bytes,
+                        file_name="enterprise_data_agent_report.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="export_excel_btn",
                     )
-                    st.toast("บันทึก Feedback 👍 แล้ว ขอบคุณครับ", icon="✅")
-            with fb_col2:
-                if st.button("👎 ไม่ถูกต้อง", key=f"fb_down_{len(logs)}_{user_query}"):
-                    save_feedback(
-                        user_query=user_query,
-                        generated_sql=final_sql,
-                        engine=engine,
-                        local_model=local_model,
-                        rating="down",
-                        row_count=row_count_for_feedback,
+                except Exception as e:
+                    st.error(f"สร้างไฟล์ Excel ไม่สำเร็จ: {e}")
+
+            with exp_col2:
+                try:
+                    styled_charts = [(title, style_chart_theme(fig)) for title, fig in charts]
+                    pdf_bytes = build_pdf_report(user_query, df_result, summary, stats_text, final_sql, styled_charts)
+                    st.download_button(
+                        "📄 ดาวน์โหลด PDF",
+                        data=pdf_bytes,
+                        file_name="enterprise_data_agent_report.pdf",
+                        mime="application/pdf",
+                        key="export_pdf_btn",
                     )
-                    st.toast("บันทึก Feedback 👎 แล้ว ขอบคุณครับ", icon="📝")
+                except Exception as e:
+                    st.error(f"สร้างไฟล์ PDF ไม่สำเร็จ: {e}")
+
+            if _find_thai_font_path() is None:
+                st.caption(
+                    "⚠️ ไม่พบไฟล์ Thai font ในโฟลเดอร์ fonts/ — PDF จะแสดงภาษาไทยไม่ได้ (ขึ้นเป็นช่องว่าง) "
+                    "ดาวน์โหลดฟอนต์ Sarabun จาก Google Fonts แล้ววางไว้ที่ fonts/Sarabun-Regular.ttf เพื่อแก้ปัญหานี้ "
+                    "(Excel ไม่มีปัญหานี้ เพราะรองรับภาษาไทยในตัวอยู่แล้ว)"
+                )
+        else:
+            st.warning("ไม่พบข้อมูล หรือเกิดข้อผิดพลาดในการรัน SQL")
+
+        with st.expander("🔍 Audit Logs & Generated SQL Pipeline (สำหรับงานเทคนิค)"):
+            st.code(final_sql, language="sql")
+            for log in logs:
+                st.write(log)
+
+        # --------------------------------------------------
+        # Feedback & Rating — ให้ผู้ใช้ประเมิน SQL ที่ AI generate ว่าถูกต้องไหม
+        # เก็บทุกครั้งที่กด ไม่ว่าผลลัพธ์จะว่างหรือมีข้อมูล (เพื่อวัด accuracy ครบทุกกรณี)
+        # --------------------------------------------------
+        st.markdown("**SQL ที่ AI สร้างถูกต้องไหม?**")
+        fb_col1, fb_col2, fb_col_spacer = st.columns([1, 1, 6])
+        row_count_for_feedback = int(len(df_result)) if df_result is not None else 0
+
+        with fb_col1:
+            if st.button("👍 ถูกต้อง", key=f"fb_up_{len(logs)}_{user_query}"):
+                save_feedback(
+                    user_query=user_query,
+                    generated_sql=final_sql,
+                    engine=engine,
+                    local_model=local_model,
+                    rating="up",
+                    row_count=row_count_for_feedback,
+                )
+                st.toast("บันทึก Feedback 👍 แล้ว ขอบคุณครับ", icon="✅")
+        with fb_col2:
+            if st.button("👎 ไม่ถูกต้อง", key=f"fb_down_{len(logs)}_{user_query}"):
+                save_feedback(
+                    user_query=user_query,
+                    generated_sql=final_sql,
+                    engine=engine,
+                    local_model=local_model,
+                    rating="down",
+                    row_count=row_count_for_feedback,
+                )
+                st.toast("บันทึก Feedback 👎 แล้ว ขอบคุณครับ", icon="📝")
 
 with tab2:
     st.subheader("📋 Schema และตัวอย่างข้อมูลของฐานข้อมูลทั้งหมด")
