@@ -3,3 +3,7 @@ duckdb
 google-genai
 pandas
 plotly
+requests
+kaleido
+openpyxl
+fpdf2
