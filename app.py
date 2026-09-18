@@ -1,4 +1,6 @@
 import os
+import sqlite3
+import time
 import duckdb
 import pandas as pd
 import requests
@@ -7,6 +9,67 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from google import genai
+
+
+# ------------------------------------------
+# Feedback & Rating System — เก็บ 👍/👎 ของผู้ใช้ต่อ SQL ที่ AI generate
+# ใช้ SQLite ไฟล์เดียว (feedback.db) เก็บถาวรข้าม session/restart
+# ข้อมูลนี้เอาไปต่อยอดวัด Accuracy เพิ่มเติมนอกจาก benchmark 150 ข้อเดิมได้
+# ------------------------------------------
+FEEDBACK_DB_PATH = os.environ.get("FEEDBACK_DB_PATH", "feedback.db")
+
+
+def _get_feedback_conn():
+    """เปิด connection ใหม่ทุกครั้ง (SQLite + Streamlit multi-thread ปลอดภัยกว่าแชร์ connection เดียว)"""
+    conn = sqlite3.connect(FEEDBACK_DB_PATH, check_same_thread=False)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            user_query TEXT NOT NULL,
+            generated_sql TEXT,
+            engine TEXT NOT NULL,
+            local_model TEXT,
+            rating TEXT NOT NULL,      -- 'up' หรือ 'down'
+            row_count INTEGER
+        )
+        """
+    )
+    conn.commit()
+    return conn
+
+
+def save_feedback(user_query, generated_sql, engine, local_model, rating, row_count):
+    """บันทึก feedback ลง SQLite — เรียกทันทีที่ผู้ใช้กดปุ่ม 👍/👎"""
+    conn = _get_feedback_conn()
+    try:
+        conn.execute(
+            "INSERT INTO feedback (timestamp, user_query, generated_sql, engine, local_model, rating, row_count) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                pd.Timestamp.now().isoformat(),
+                user_query,
+                generated_sql,
+                engine,
+                local_model,
+                rating,
+                row_count,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_feedback_stats():
+    """ดึงสถิติสรุปสำหรับแสดงในแท็บ Feedback Dashboard — แยกตาม engine/โมเดล"""
+    conn = _get_feedback_conn()
+    try:
+        df = pd.read_sql_query("SELECT * FROM feedback ORDER BY timestamp DESC", conn)
+    finally:
+        conn.close()
+    return df
 
 
 # ------------------------------------------
@@ -781,7 +844,7 @@ with st.container(border=True):
             unsafe_allow_html=True,
         )
 
-tab1, tab2 = st.tabs(["💬 AI Query Engine", "🔍 Data Schema Explorer"])
+tab1, tab2, tab3 = st.tabs(["💬 AI Query Engine", "🔍 Data Schema Explorer", "📝 Feedback Dashboard"])
 
 with tab1:
     user_query = st.text_input("พิมพ์คำถามของคุณที่นี่ (เช่น: ขอ 5 อันดับสินค้าที่มียอดขายรวมสูงสุด):")
@@ -824,6 +887,37 @@ with tab1:
                 for log in logs:
                     st.write(log)
 
+            # --------------------------------------------------
+            # Feedback & Rating — ให้ผู้ใช้ประเมิน SQL ที่ AI generate ว่าถูกต้องไหม
+            # เก็บทุกครั้งที่กด ไม่ว่าผลลัพธ์จะว่างหรือมีข้อมูล (เพื่อวัด accuracy ครบทุกกรณี)
+            # --------------------------------------------------
+            st.markdown("**SQL ที่ AI สร้างถูกต้องไหม?**")
+            fb_col1, fb_col2, fb_col_spacer = st.columns([1, 1, 6])
+            row_count_for_feedback = int(len(df_result)) if df_result is not None else 0
+
+            with fb_col1:
+                if st.button("👍 ถูกต้อง", key=f"fb_up_{len(logs)}_{user_query}"):
+                    save_feedback(
+                        user_query=user_query,
+                        generated_sql=final_sql,
+                        engine=engine,
+                        local_model=local_model,
+                        rating="up",
+                        row_count=row_count_for_feedback,
+                    )
+                    st.toast("บันทึก Feedback 👍 แล้ว ขอบคุณครับ", icon="✅")
+            with fb_col2:
+                if st.button("👎 ไม่ถูกต้อง", key=f"fb_down_{len(logs)}_{user_query}"):
+                    save_feedback(
+                        user_query=user_query,
+                        generated_sql=final_sql,
+                        engine=engine,
+                        local_model=local_model,
+                        rating="down",
+                        row_count=row_count_for_feedback,
+                    )
+                    st.toast("บันทึก Feedback 👎 แล้ว ขอบคุณครับ", icon="📝")
+
 with tab2:
     st.subheader("📋 Schema และตัวอย่างข้อมูลของฐานข้อมูลทั้งหมด")
     search_term = st.text_input("🔍 ค้นหาชื่อตาราง หรือ ชื่อคอลัมน์:")
@@ -854,3 +948,64 @@ with tab2:
                     st.dataframe(sample_df, use_container_width=True)
                 except Exception as e:
                     st.error(f"ไม่สามารถโหลดตัวอย่างข้อมูลได้: {e}")
+
+with tab3:
+    st.subheader("📝 สรุปผล Feedback จากผู้ใช้งานจริง")
+    st.caption("ข้อมูลนี้เก็บสะสมทุกครั้งที่มีคนกด 👍/👎 ใต้ SQL ที่ AI สร้าง — ใช้ประกอบวัด Accuracy เพิ่มเติมจาก benchmark 150 ข้อได้")
+
+    feedback_df = get_feedback_stats()
+
+    if feedback_df.empty:
+        st.info("ยังไม่มี Feedback เข้ามา — ลองไปกดปุ่ม 👍/👎 ที่แท็บ 'AI Query Engine' หลังรันคำถามดูก่อน")
+    else:
+        total_fb = len(feedback_df)
+        up_count = int((feedback_df["rating"] == "up").sum())
+        down_count = int((feedback_df["rating"] == "down").sum())
+        accuracy_pct = (up_count / total_fb * 100) if total_fb else 0
+
+        kpi_c1, kpi_c2, kpi_c3, kpi_c4 = st.columns(4)
+        kpi_c1.metric("Feedback ทั้งหมด", f"{total_fb:,}")
+        kpi_c2.metric("👍 ถูกต้อง", f"{up_count:,}")
+        kpi_c3.metric("👎 ไม่ถูกต้อง", f"{down_count:,}")
+        kpi_c4.metric("Accuracy จาก Feedback", f"{accuracy_pct:.1f}%")
+
+        st.markdown("---")
+
+        # สรุปแยกตาม Engine / โมเดล — เทียบกับ benchmark เดิม (19.33% / 22.00%) ได้เลย
+        st.markdown("**📊 สรุปแยกตาม Engine / โมเดล**")
+        breakdown = (
+            feedback_df.assign(
+                engine_label=feedback_df.apply(
+                    lambda r: f"{r['engine']} ({r['local_model']})" if r["engine"] == "local" and r["local_model"]
+                    else r["engine"],
+                    axis=1,
+                )
+            )
+            .groupby("engine_label")["rating"]
+            .value_counts()
+            .unstack(fill_value=0)
+        )
+        if "up" not in breakdown.columns:
+            breakdown["up"] = 0
+        if "down" not in breakdown.columns:
+            breakdown["down"] = 0
+        breakdown["total"] = breakdown["up"] + breakdown["down"]
+        breakdown["accuracy_%"] = (breakdown["up"] / breakdown["total"] * 100).round(1)
+        st.dataframe(breakdown, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("**🕒 ประวัติ Feedback ล่าสุด**")
+        display_df = feedback_df.copy()
+        display_df["rating"] = display_df["rating"].map({"up": "👍 ถูกต้อง", "down": "👎 ไม่ถูกต้อง"})
+        st.dataframe(
+            display_df[["timestamp", "user_query", "generated_sql", "engine", "local_model", "rating", "row_count"]],
+            use_container_width=True,
+        )
+
+        csv_bytes = feedback_df.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            "📥 ดาวน์โหลด Feedback ทั้งหมดเป็น CSV",
+            data=csv_bytes,
+            file_name="feedback_export.csv",
+            mime="text/csv",
+        )
