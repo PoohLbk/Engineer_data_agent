@@ -333,15 +333,10 @@ class EnterpriseDataAgent:
         """
         เรียกโมเดล Local ผ่าน Ollama REST API
         base_url: ที่อยู่ Ollama server — ถ้าไม่ระบุจะใช้ self.ollama_base_url (default: localhost)
-        องค์กรขนาดใหญ่สามารถชี้ไปที่ on-prem inference server ภายใน network ของตัวเองได้ผ่านค่านี้
-        เพื่อให้ schema/ข้อมูล/prompt ไม่ต้องออกจากเครือข่ายองค์กรเลย (Data Privacy)
-        มีการเช็ก Empty Response โดยเฉพาะ เพราะเป็นจุดอ่อนที่วัดได้จริงของโมเดล Local
-        (เช่น CodeLlama 7B พบ Empty Response ถึง 65/150 จาก benchmark) และ retry สั้น ๆ ก่อนยอมแพ้
         """
         url = (base_url or self.ollama_base_url or "").strip().rstrip("/")
         last_err_detail = "unknown error"
 
-        # กันเคสง่าย ๆ ที่สุด: ไม่ได้กรอก URL มาเลย หรือกรอกแค่ host ไม่มี scheme
         if not url:
             raise OllamaConnectionError("ยังไม่ได้ระบุ Ollama Server URL")
         if not url.startswith("http://") and not url.startswith("https://"):
@@ -371,27 +366,19 @@ class EnterpriseDataAgent:
                 last_err_detail = "Empty Response จากโมเดล Local (โมเดลตอบกลับว่างเปล่า)"
                 print(f"[Ollama] {last_err_detail} — attempt {attempt + 1}/{max_empty_retries + 1}")
             except requests.exceptions.ConnectionError as e:
-                # เก็บรายละเอียด exception จริงไว้ด้วย (DEBUG) แทนที่จะโยนแค่ข้อความ generic
-                # เพื่อไล่ปัญหาได้ตรงจุดกว่าเดิม เช่น "Connection refused" vs DNS fail vs อื่น ๆ
                 raise OllamaConnectionError(
                     f"เชื่อมต่อ Ollama ไม่ได้ที่ {url} — "
                     f"[DEBUG: {type(e).__name__}: {e}] "
-                    "ตรวจสอบว่ารัน `ollama serve` อยู่ (หรือชี้ URL ไปที่ on-prem server ของหน่วยงานให้ถูกต้อง) "
-                    f"และ pull โมเดล '{model_name}' ไว้แล้ว (`ollama pull {model_name}`)"
+                    "ตรวจสอบว่ารัน `ollama serve` อยู่ และ pull โมเดลไว้แล้ว"
                 )
             except requests.exceptions.HTTPError as e:
-                # แยก HTTP error (เช่น 404/405) ออกจาก connection error — สาเหตุคนละแบบกันเลย
-                # 404/405 มักแปลว่า "ต่อ Ollama ได้แล้ว" แต่ path/URL ที่ชี้ไปผิด (เช่นเผลอชี้ไป Streamlit เอง)
                 raise RuntimeError(
                     f"Ollama ตอบกลับด้วย HTTP error ({resp.status_code}) ที่ {url}/api/generate — "
-                    f"[DEBUG: {e}] "
-                    "มักแปลว่า URL ที่กรอกไม่ใช่ Ollama จริง ๆ (เช่น พอร์ตของแอปอื่นที่ไม่ใช่ 11434) "
-                    "ลองเช็คว่า URL เป็น http://localhost:11434 (หรือ URL ของ on-prem server ที่ถูกต้อง)"
+                    f"[DEBUG: {e}] ตรวจสอบว่าพอร์ตถูกต้อง (เช่น http://localhost:11434)"
                 )
             except requests.exceptions.Timeout as e:
                 raise RuntimeError(
-                    f"Ollama ที่ {url} ไม่ตอบสนองภายในเวลาที่กำหนด (timeout) — [DEBUG: {e}] "
-                    "โมเดลอาจกำลังโหลดครั้งแรกหรือเครื่องload หนักเกินไป ลองใหม่อีกครั้ง"
+                    f"Ollama ที่ {url} ไม่ตอบสนองภายในเวลาที่กำหนด (timeout) — [DEBUG: {e}]"
                 )
             except requests.exceptions.RequestException as e:
                 raise RuntimeError(f"Ollama API error: [DEBUG: {type(e).__name__}: {e}]")
@@ -399,12 +386,6 @@ class EnterpriseDataAgent:
         raise RuntimeError(last_err_detail)
 
     def _call_llm(self, prompt, engine="cloud", local_model=None, ollama_url=None):
-        """
-        Dispatcher กลาง — สลับระหว่าง Cloud Engine (Gemini API) กับ Local Engine (Ollama)
-        engine: "cloud" หรือ "local"
-        local_model: ชื่อโมเดลบน Ollama เช่น "qwen2.5-coder:7b", "codellama:7b" (จำเป็นเมื่อ engine="local")
-        ollama_url: ที่อยู่ Ollama server แบบระบุเอง (สำหรับ on-prem server ขององค์กร)
-        """
         if engine == "local":
             if not local_model:
                 raise ValueError("ต้องระบุ local_model เมื่อเลือกใช้ Local Engine")
@@ -464,8 +445,6 @@ class EnterpriseDataAgent:
                 return df_result, sql_query, logs
 
             except OllamaConnectionError as e:
-                # ปัญหาระดับ infrastructure (เชื่อมต่อ Ollama ไม่ได้เลย) — retry ไปก็ไม่มีทางหาย
-                # หยุดทันทีแทนที่จะเสีย attempt ไปวนซ้ำ error เดิม
                 last_error = str(e)
                 logs.append(f"[Attempt {attempt}] Infrastructure Error (หยุดทันที ไม่ retry): {last_error}")
                 break
@@ -474,7 +453,6 @@ class EnterpriseDataAgent:
                 last_error = str(e)
                 logs.append(f"[Attempt {attempt}] Execution Error: {last_error}")
 
-                # ป้อน error กลับไปให้โมเดลแก้ SQL ในรอบถัดไป (Self-Correction)
                 prompt = f"""
                 {base_prompt}
 
@@ -485,14 +463,11 @@ class EnterpriseDataAgent:
                 {last_error}
 
                 กรุณาแก้ไขคำสั่ง SQL ให้ถูกต้องตาม schema ที่ให้ไว้ข้างต้น
-                (เช่น ถ้า error บอกว่าไม่มีตารางนี้ ให้ตรวจดู schema แล้วใช้ชื่อตารางที่ถูกต้องจริง ๆ)
                 Return ONLY the raw SQL query without codeblock formatting or explanations.
                 """
 
         logs.append(f"ล้มเหลวหลังจากพยายาม {attempt} ครั้ง: {last_error}")
         return None, sql_query, logs
-
-
 
     def generate_executive_summary(self, user_query, df_result, engine="cloud", local_model=None, ollama_url=None):
         if df_result is None or df_result.empty:
@@ -514,273 +489,29 @@ class EnterpriseDataAgent:
         ผลลัพธ์ข้อมูลที่ได้จาก Database (ตัวอย่าง 20 แถวแรก):
         {data_preview}
 
-        ผลการวิเคราะห์เชิงสถิติที่คำนวณไว้ล่วงหน้าแล้ว (เป็นตัวเลขจริงที่คำนวณจากข้อมูลทั้งหมด ไม่ใช่การประมาณ
-        ให้ใช้ตัวเลขชุดนี้อ้างอิงในการตอบ ห้ามคำนวณตัวเลขสถิติขึ้นใหม่เอง):
+        ผลการวิเคราะห์เชิงสถิติที่คำนวณไว้ล่วงหน้าแล้ว:
         {stats_block}
 
         คำแนะนำในการตอบ:
         1. อธิบายคำตอบหลักให้ชัดเจน ตรงประเด็นกับคำถามของผู้ใช้ก่อน
         2. สรุปจุดสำคัญหรือ Insight ที่น่าสนใจจากข้อมูล เป็นข้อๆ (Bullet points)
-        3. อ้างอิงผลการวิเคราะห์เชิงสถิติที่ให้ไว้ข้างต้น (Outlier, Pareto 80/20, % การเติบโต ถ้ามี)
-           แล้วตีความเป็นภาษาที่ผู้บริหารเข้าใจง่าย พร้อมข้อเสนอแนะเชิงธุรกิจถ้าเป็นไปได้
+        3. อ้างอิงผลการวิเคราะห์เชิงสถิติที่ให้ไว้ข้างต้น พร้อมข้อเสนอแนะเชิงธุรกิจ
         4. ตอบเป็นภาษาไทยที่สุภาพ เข้าใจง่าย และเป็นทางการ
         """
 
         try:
             summary_text = self._call_llm(prompt, engine=engine, local_model=local_model, ollama_url=ollama_url)
             if not summary_text.strip():
-                return "โมเดล Local ตอบกลับว่างเปล่า (Empty Response) — ลองเปลี่ยนเป็น Qwen2.5-Coder หรือสลับไปใช้ Cloud Engine"
+                return "โมเดล Local ตอบกลับว่างเปล่า (Empty Response) — ลองเปลี่ยนโมเดลหรือสลับไปใช้ Cloud Engine"
             return summary_text.strip()
         except Exception as e:
             return f"เกิดข้อผิดพลาดในการสร้างสรุปผลลัพธ์: {str(e)}"
 
-# ==========================================
-# 2. Streamlit Web UI Application
-# ==========================================
-st.set_page_config(page_title="Enterprise Data Agent", layout="wide")
-
-# ------------------------------------------
-# Design tokens — "boardroom" executive theme
-# ------------------------------------------
-COLOR_BG = "#0F1620"          # deep navy-charcoal base
-COLOR_SURFACE = "#161F2E"     # card / panel surface
-COLOR_BORDER = "#28344A"      # hairline borders
-COLOR_TEXT = "#E8ECF3"        # primary text
-COLOR_TEXT_MUTED = "#8B9BB4"  # secondary text
-COLOR_ACCENT = "#C9A227"      # muted brass/gold — the one bold accent
-COLOR_ACCENT_SOFT = "#3FA796" # muted teal — secondary/positive signal
-PLOTLY_COLORWAY = [COLOR_ACCENT, COLOR_ACCENT_SOFT, "#7D8FB3", "#C1584C", "#5B7FA6"]
-
-CUSTOM_CSS = f"""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
-
-html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
-    background-color: {COLOR_BG} !important;
-    color: {COLOR_TEXT};
-    font-family: 'IBM Plex Sans', sans-serif;
-}}
-[data-testid="stHeader"] {{ background-color: transparent !important; }}
-[data-testid="stAppViewContainer"] .main .block-container {{
-    padding-top: 2.2rem;
-    max-width: 1180px;
-}}
-
-h1, h2, h3 {{
-    font-family: 'Source Serif 4', serif !important;
-    color: {COLOR_TEXT} !important;
-    font-weight: 600 !important;
-}}
-
-.exec-header {{ margin-bottom: 1.6rem; }}
-.exec-header .eyebrow {{
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 0.82rem;
-    color: {COLOR_ACCENT_SOFT};
-    margin-bottom: 2px;
-}}
-.exec-header h1 {{
-    font-size: 2.1rem !important;
-    margin: 0 0 4px 0 !important;
-}}
-.exec-header p {{
-    color: {COLOR_TEXT_MUTED};
-    font-size: 0.95rem;
-    margin: 0;
-}}
-
-/* KPI card grid */
-.kpi-grid {{
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 14px;
-    margin: 4px 0 26px 0;
-}}
-.kpi-card {{
-    background: {COLOR_SURFACE};
-    border: 1px solid {COLOR_BORDER};
-    border-left: 3px solid {COLOR_ACCENT};
-    border-radius: 6px;
-    padding: 16px 20px;
-}}
-.kpi-card .kpi-label {{
-    font-size: 0.76rem;
-    color: {COLOR_TEXT_MUTED};
-    margin-bottom: 6px;
-}}
-.kpi-card .kpi-value {{
-    font-family: 'Source Serif 4', serif;
-    font-size: 1.75rem;
-    font-variant-numeric: tabular-nums;
-    line-height: 1.15;
-    color: {COLOR_TEXT};
-}}
-.kpi-card .kpi-sub {{
-    font-size: 0.74rem;
-    color: {COLOR_ACCENT_SOFT};
-    margin-top: 6px;
-}}
-
-/* Inputs, buttons, tabs, expanders, dataframe */
-[data-testid="stTextInput"] input {{
-    background-color: {COLOR_SURFACE} !important;
-    color: {COLOR_TEXT} !important;
-    border: 1px solid {COLOR_BORDER} !important;
-    border-radius: 6px !important;
-}}
-[data-testid="stButton"] button {{
-    background-color: {COLOR_ACCENT} !important;
-    color: #FFFFFF !important;
-    border: none !important;
-    border-radius: 6px !important;
-    font-weight: 600 !important;
-    padding: 0.5rem 1.4rem !important;
-}}
-[data-testid="stButton"] button p {{
-    color: #FFFFFF !important;
-}}
-[data-testid="stButton"] button:hover {{
-    background-color: #DDB542 !important;
-    color: #FFFFFF !important;
-}}
-[data-testid="stTabs"] button [data-testid="stMarkdownContainer"] p {{
-    font-family: 'IBM Plex Sans', sans-serif;
-    color: {COLOR_TEXT_MUTED};
-}}
-[data-testid="stTabs"] [aria-selected="true"] [data-testid="stMarkdownContainer"] p {{
-    color: {COLOR_ACCENT} !important;
-}}
-[data-testid="stExpander"] {{
-    background-color: {COLOR_SURFACE};
-    border: 1px solid {COLOR_BORDER} !important;
-    border-radius: 6px !important;
-}}
-[data-testid="stDataFrame"] {{
-    border: 1px solid {COLOR_BORDER};
-    border-radius: 6px;
-}}
-[data-testid="stAlert"] {{
-    background-color: {COLOR_SURFACE} !important;
-    border: 1px solid {COLOR_BORDER} !important;
-    color: {COLOR_TEXT} !important;
-}}
-.privacy-badge {{
-    display: inline-block;
-    font-size: 0.78rem;
-    font-family: 'IBM Plex Sans', sans-serif;
-    padding: 5px 12px;
-    border-radius: 20px;
-    margin: 6px 0 2px 0;
-}}
-.privacy-badge.local {{
-    background: rgba(63, 167, 150, 0.15);
-    color: {COLOR_ACCENT_SOFT};
-    border: 1px solid {COLOR_ACCENT_SOFT};
-}}
-.privacy-badge.cloud {{
-    background: rgba(193, 88, 76, 0.12);
-    color: #D98A80;
-    border: 1px solid #C1584C;
-}}
-</style>
-"""
-
-st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-
-
-def format_kpi_number(x):
-    """จัดรูปแบบตัวเลขให้อ่านง่ายแบบสรุปผู้บริหาร (K/M)"""
-    if x is None:
-        return "-"
-    abs_x = abs(x)
-    if abs_x >= 1_000_000:
-        return f"{x/1_000_000:,.2f}M"
-    if abs_x >= 1_000:
-        return f"{x:,.0f}"
-    return f"{x:,.2f}"
-
-
-def compute_kpis(df: pd.DataFrame):
-    """
-    สร้างชุด KPI จากผลลัพธ์ query:
-    - จำนวนแถว
-    - ผลรวม/ค่าเฉลี่ยของคอลัมน์ตัวเลข (สูงสุด 2 คอลัมน์แรก)
-    - จำนวนนับไม่ซ้ำ (distinct) ของคอลัมน์ที่ดูเหมือน ID เช่น customer_id, order_id ถ้ามี
-    """
-    kpis = [("จำนวนแถวผลลัพธ์", f"{len(df):,}", "")]
-
-    numeric_cols = df.select_dtypes(include="number").columns.tolist()
-    for col in numeric_cols[:2]:
-        total = df[col].sum()
-        avg = df[col].mean()
-        kpis.append((f"รวม {col}", format_kpi_number(total), f"เฉลี่ย {format_kpi_number(avg)} / แถว"))
-
-    id_like_keywords = ["customer", "order", "user", "ลูกค้า"]
-    for col in df.columns:
-        col_lower = col.lower()
-        if any(kw in col_lower for kw in id_like_keywords) and len(kpis) < 4:
-            distinct_count = df[col].nunique()
-            kpis.append((f"จำนวน {col} ไม่ซ้ำ", f"{distinct_count:,}", ""))
-
-    return kpis[:4]
-
-
-def render_kpi_cards(df: pd.DataFrame):
-    kpis = compute_kpis(df)
-    cards_html = "".join(
-        f"""<div class="kpi-card">
-                <div class="kpi-label">{label}</div>
-                <div class="kpi-value">{value}</div>
-                <div class="kpi-sub">{sub}</div>
-            </div>"""
-        for label, value, sub in kpis
-    )
-    st.markdown(f'<div class="kpi-grid">{cards_html}</div>', unsafe_allow_html=True)
-
-
-def style_chart_theme(fig):
-    """ปรับโทนกราฟ Plotly ให้เข้ากับธีม Dashboard"""
-    fig.update_layout(
-        paper_bgcolor=COLOR_SURFACE,
-        plot_bgcolor=COLOR_SURFACE,
-        font=dict(family="IBM Plex Sans, sans-serif", color=COLOR_TEXT),
-        title_font=dict(family="Source Serif 4, serif", size=18, color=COLOR_TEXT),
-        colorway=PLOTLY_COLORWAY,
-        margin=dict(t=56, l=10, r=10, b=10),
-    )
-    fig.update_xaxes(gridcolor=COLOR_BORDER, zerolinecolor=COLOR_BORDER)
-    fig.update_yaxes(gridcolor=COLOR_BORDER, zerolinecolor=COLOR_BORDER)
-    return fig
-
 
 # ==========================================
-# Export Report System — รวมตาราง, กราฟ, Executive Summary ออกเป็น Excel / PDF ได้ในคลิกเดียว
+# Export Report Systems (Excel & PDF with Column Width Fix)
 # ==========================================
-
-# หา Thai font ที่ bundle ไว้เอง (จำเป็นสำหรับ PDF เพราะ fpdf2 ไม่มี font ไทยมาให้ในตัว)
-# ถ้าไม่เจอไฟล์ font จะ fallback ไปใช้ font builtin ซึ่ง "แสดงภาษาไทยไม่ได้" (ขึ้นเป็นกล่องว่าง)
-_THAI_FONT_CANDIDATES = [
-    os.path.join("fonts", "Sarabun-Regular.ttf"),
-    os.path.join("fonts", "THSarabunNew.ttf"),
-    "/usr/share/fonts/truetype/thai/Sarabun-Regular.ttf",
-    "/System/Library/Fonts/Supplemental/Ayuthaya.ttf",  # macOS มักมีฟอนต์นี้ติดเครื่องมาให้ รองรับไทยได้บางส่วน
-]
-
-
-def _find_thai_font_path():
-    for path in _THAI_FONT_CANDIDATES:
-        if os.path.exists(path):
-            return path
-    return None
-
-
 def build_excel_report(user_query, df_result, summary_text, stats_text, final_sql):
-    """
-    สร้างไฟล์ Excel (.xlsx) แบบหลาย sheet:
-    - Sheet 'ข้อมูล' : ตารางผลลัพธ์ query เต็ม ๆ
-    - Sheet 'สรุปผล' : คำถาม, SQL, Executive Summary, สถิติที่คำนวณไว้
-    คืนค่าเป็น bytes พร้อมส่งเข้า st.download_button โดยตรง
-    """
     import io
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill
@@ -788,7 +519,7 @@ def build_excel_report(user_query, df_result, summary_text, stats_text, final_sq
 
     wb = Workbook()
 
-    # --- Sheet 1: ข้อมูล ---
+    # Sheet 1: ข้อมูล
     ws_data = wb.active
     ws_data.title = "ข้อมูล"
     for row in dataframe_to_rows(df_result, index=False, header=True):
@@ -802,7 +533,7 @@ def build_excel_report(user_query, df_result, summary_text, stats_text, final_sq
         max_len = max((len(str(c.value)) for c in col_cells if c.value is not None), default=10)
         ws_data.column_dimensions[col_cells[0].column_letter].width = min(max_len + 4, 50)
 
-    # --- Sheet 2: สรุปผล ---
+    # Sheet 2: สรุปผล
     ws_summary = wb.create_sheet("สรุปผล")
     ws_summary.column_dimensions["A"].width = 100
     rows_to_write = [
@@ -828,17 +559,25 @@ def build_excel_report(user_query, df_result, summary_text, stats_text, final_sq
     return buf.getvalue()
 
 
+_THAI_FONT_CANDIDATES = [
+    os.path.join("fonts", "Sarabun-Regular.ttf"),
+    os.path.join("fonts", "THSarabunNew.ttf"),
+    "/usr/share/fonts/truetype/thai/Sarabun-Regular.ttf",
+    "/System/Library/Fonts/Supplemental/Ayuthaya.ttf",
+]
+
+def _find_thai_font_path():
+    for path in _THAI_FONT_CANDIDATES:
+        if os.path.exists(path):
+            return path
+    return None
+
+
 def build_pdf_report(user_query, df_result, summary_text, stats_text, final_sql, chart_figs):
-    """
-    สร้างไฟล์ PDF รวม: คำถาม, Executive Summary, ตารางข้อมูล (preview), กราฟ (แปลงเป็นรูปด้วย kaleido), สถิติ
-    คืนค่าเป็น bytes พร้อมส่งเข้า st.download_button โดยตรง
-    หมายเหตุ: ต้องมี Thai font ไฟล์ (.ttf) วางไว้ในโฟลเดอร์ fonts/ ไม่งั้นข้อความไทยจะแสดงไม่ได้
-    """
     import io
     from fpdf import FPDF
 
     thai_font_path = _find_thai_font_path()
-
     pdf = FPDF()
     pdf.add_page()
 
@@ -846,7 +585,6 @@ def build_pdf_report(user_query, df_result, summary_text, stats_text, final_sql,
         pdf.add_font("Thai", "", thai_font_path, uni=True)
         pdf.set_font("Thai", size=16)
     else:
-        # Fallback: font builtin ไม่รองรับภาษาไทย — เตือนไว้ใน UI แล้วว่าอาจแสดงผลผิดเพี้ยน
         pdf.set_font("Helvetica", size=16)
 
     pdf.set_text_color(20, 20, 20)
@@ -866,9 +604,7 @@ def build_pdf_report(user_query, df_result, summary_text, stats_text, final_sql,
     pdf.multi_cell(0, 6, summary_text)
     pdf.ln(3)
 
-    # ตารางข้อมูล (แสดงตัวอย่างสูงสุด 25 แถวแรก กันไฟล์ยาวเกินไป)
-    # ความกว้างคอลัมน์ต้องมีขั้นต่ำไว้เสมอ ไม่งั้นถ้าคอลัมน์เยอะเกินไป (เช่น 10+ คอลัมน์)
-    # หารเท่า ๆ กันแล้วจะแคบจนฟอนต์ใส่ตัวอักษรแม้แค่ตัวเดียวก็ไม่พอ (fpdf2 จะ error ทันที)
+    # ตารางข้อมูล — จำกัดสูงสุด 6 คอลัมน์ ป้องกัน Error "Not enough horizontal space"
     pdf.set_font(pdf.font_family, size=13)
     pdf.set_text_color(20, 20, 20)
     pdf.multi_cell(0, 8, f"ตารางผลลัพธ์ข้อมูล (แสดง {min(25, len(df_result))} จาก {len(df_result)} แถว)")
@@ -877,58 +613,42 @@ def build_pdf_report(user_query, df_result, summary_text, stats_text, final_sql,
 
     try:
         page_width_mm = 190
-        min_col_width_mm = 22  # ขั้นต่ำต่อคอลัมน์ที่ฟอนต์ไทยขนาด 7-8pt ยังพอใส่ตัวอักษรได้จริง
-        max_cols_fit = max(int(page_width_mm // min_col_width_mm), 1)
-
-        columns_truncated = False
-        if len(preview_df_full.columns) > max_cols_fit:
-            preview_df = preview_df_full.iloc[:, :max_cols_fit]
-            columns_truncated = True
-        else:
-            preview_df = preview_df_full
+        max_cols_fit = min(len(preview_df_full.columns), 6)
+        preview_df = preview_df_full.iloc[:, :max_cols_fit]
+        columns_truncated = len(preview_df_full.columns) > max_cols_fit
 
         n_cols = max(len(preview_df.columns), 1)
-        col_width = max(page_width_mm / n_cols, min_col_width_mm)
+        col_width = page_width_mm / n_cols
 
-        # ปรับขนาดฟอนต์ลงถ้าคอลัมน์เยอะ เพื่อให้ตัวอักษรใส่ในช่องได้จริง ไม่ error
-        table_font_size = 8 if n_cols <= 6 else 7
-        pdf.set_font(pdf.font_family, size=table_font_size)
+        pdf.set_font(pdf.font_family, size=7)
         pdf.set_text_color(40, 40, 40)
-
-        # จำนวนตัวอักษรสูงสุดต่อช่องอิงตามความกว้างจริง กันข้อความล้นช่อง (โดยเฉพาะฟอนต์ไทยที่กว้างกว่า Latin)
-        max_chars = max(int(col_width / 2.2), 4)
+        max_chars = max(int(col_width / 2.0), 4)
 
         for col in preview_df.columns:
-            pdf.cell(col_width, 6, str(col)[:max_chars], border=1)
+            pdf.cell(col_width, 6, str(col)[:max_chars], border=1, align="center")
         pdf.ln()
+
         for _, row in preview_df.iterrows():
             for val in row:
                 pdf.cell(col_width, 6, str(val)[:max_chars], border=1)
             pdf.ln()
 
         if columns_truncated:
+            pdf.ln(2)
             pdf.set_font(pdf.font_family, size=8)
             pdf.set_text_color(120, 120, 120)
             pdf.multi_cell(
-                0, 6,
-                f"หมายเหตุ: ตารางมีทั้งหมด {len(preview_df_full.columns)} คอลัมน์ "
-                f"แสดงใน PDF นี้เพียง {max_cols_fit} คอลัมน์แรก (ดูข้อมูลครบทุกคอลัมน์ได้จากไฟล์ Excel แทน)"
+                0, 5,
+                f"หมายเหตุ: ตารางมีทั้งหมด {len(preview_df_full.columns)} คอลัมน์ แสดงใน PDF นี้เพียง {max_cols_fit} คอลัมน์แรก "
+                f"(สามารถดาวน์โหลดไฟล์ Excel เพื่อดูข้อมูลครบทุกคอลัมน์ได้)"
             )
-    except Exception:
-        # Safety net: ถ้าโหมดตาราง (fixed-width cell) ยัง error ไม่ว่าเหตุผลอะไรก็ตาม
-        # ให้ fallback มาแสดงแบบ "รายการ" แทน — ใช้ multi_cell(0, ...) ซึ่งกว้างเท่าหน้ากระดาษเสมอ
-        # จึงไม่มีทางเจอปัญหา "ความกว้างไม่พอ" แบบตาราง fixed-width อีก
+    except Exception as e:
         pdf.set_font(pdf.font_family, size=9)
         pdf.set_text_color(40, 40, 40)
-        pdf.multi_cell(0, 6, "(แสดงผลแบบตารางไม่สำเร็จ จึงแสดงเป็นรายการแทน)")
-        pdf.ln(1)
-        for idx, row in preview_df_full.iterrows():
-            row_text = " | ".join(f"{col}: {val}" for col, val in row.items())
-            pdf.multi_cell(0, 5, row_text)
-            pdf.ln(1)
+        pdf.multi_cell(0, 6, f"(ไม่สามารถเรนเดอร์เป็นตารางได้: {e} — แนะนำให้ใช้ไฟล์ Excel)")
+
     pdf.ln(4)
 
-    # กราฟ — แปลง Plotly fig เป็นรูปด้วย kaleido แล้วฝังลง PDF
     if chart_figs:
         for title, fig in chart_figs:
             try:
@@ -943,7 +663,6 @@ def build_pdf_report(user_query, df_result, summary_text, stats_text, final_sql,
                 pdf.set_font(pdf.font_family, size=9)
                 pdf.multi_cell(0, 6, f"[ไม่สามารถสร้างรูปกราฟ '{title}' ได้: {e}]")
 
-    # สถิติที่คำนวณจริง
     pdf.set_font(pdf.font_family, size=13)
     pdf.set_text_color(20, 20, 20)
     pdf.multi_cell(0, 8, "สถิติที่คำนวณจริง (Statistical Insights)")
@@ -959,19 +678,173 @@ def build_pdf_report(user_query, df_result, summary_text, stats_text, final_sql,
     return bytes(pdf.output())
 
 
+# ==========================================
+# 2. Streamlit Web UI Application
+# ==========================================
+st.set_page_config(page_title="Enterprise Data Agent", layout="wide")
+
+COLOR_BG = "#0F1620"
+COLOR_SURFACE = "#161F2E"
+COLOR_BORDER = "#28344A"
+COLOR_TEXT = "#E8ECF3"
+COLOR_TEXT_MUTED = "#8B9BB4"
+COLOR_ACCENT = "#C9A227"
+COLOR_ACCENT_SOFT = "#3FA796"
+PLOTLY_COLORWAY = [COLOR_ACCENT, COLOR_ACCENT_SOFT, "#7D8FB3", "#C1584C", "#5B7FA6"]
+
+CUSTOM_CSS = f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
+    background-color: {COLOR_BG} !important;
+    color: {COLOR_TEXT};
+    font-family: 'IBM Plex Sans', sans-serif;
+}}
+[data-testid="stHeader"] {{ background-color: transparent !important; }}
+[data-testid="stAppViewContainer"] .main .block-container {{
+    padding-top: 2.2rem;
+    max-width: 1180px;
+}}
+h1, h2, h3 {{
+    font-family: 'Source Serif 4', serif !important;
+    color: {COLOR_TEXT} !important;
+    font-weight: 600 !important;
+}}
+.exec-header {{ margin-bottom: 1.6rem; }}
+.exec-header .eyebrow {{
+    font-size: 0.82rem;
+    color: {COLOR_ACCENT_SOFT};
+    margin-bottom: 2px;
+}}
+.exec-header h1 {{ font-size: 2.1rem !important; margin: 0 0 4px 0 !important; }}
+.exec-header p {{ color: {COLOR_TEXT_MUTED}; font-size: 0.95rem; margin: 0; }}
+
+.kpi-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 14px;
+    margin: 4px 0 26px 0;
+}}
+.kpi-card {{
+    background: {COLOR_SURFACE};
+    border: 1px solid {COLOR_BORDER};
+    border-left: 3px solid {COLOR_ACCENT};
+    border-radius: 6px;
+    padding: 16px 20px;
+}}
+.kpi-card .kpi-label {{ font-size: 0.76rem; color: {COLOR_TEXT_MUTED}; margin-bottom: 6px; }}
+.kpi-card .kpi-value {{ font-family: 'Source Serif 4', serif; font-size: 1.75rem; color: {COLOR_TEXT}; }}
+.kpi-card .kpi-sub {{ font-size: 0.74rem; color: {COLOR_ACCENT_SOFT}; margin-top: 6px; }}
+
+[data-testid="stTextInput"] input {{
+    background-color: {COLOR_SURFACE} !important;
+    color: {COLOR_TEXT} !important;
+    border: 1px solid {COLOR_BORDER} !important;
+    border-radius: 6px !important;
+}}
+[data-testid="stButton"] button {{
+    background-color: {COLOR_ACCENT} !important;
+    color: #FFFFFF !important;
+    border: none !important;
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    padding: 0.5rem 1.4rem !important;
+}}
+[data-testid="stExpander"] {{
+    background-color: {COLOR_SURFACE};
+    border: 1px solid {COLOR_BORDER} !important;
+    border-radius: 6px !important;
+}}
+.privacy-badge {{
+    display: inline-block;
+    font-size: 0.78rem;
+    padding: 5px 12px;
+    border-radius: 20px;
+    margin: 6px 0 2px 0;
+}}
+.privacy-badge.local {{
+    background: rgba(63, 167, 150, 0.15);
+    color: {COLOR_ACCENT_SOFT};
+    border: 1px solid {COLOR_ACCENT_SOFT};
+}}
+.privacy-badge.cloud {{
+    background: rgba(193, 88, 76, 0.12);
+    color: #D98A80;
+    border: 1px solid #C1584C;
+}}
+</style>
+"""
+
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+
+def format_kpi_number(x):
+    if x is None:
+        return "-"
+    abs_x = abs(x)
+    if abs_x >= 1_000_000:
+        return f"{x/1_000_000:,.2f}M"
+    if abs_x >= 1_000:
+        return f"{x:,.0f}"
+    return f"{x:,.2f}"
+
+
+def compute_kpis(df: pd.DataFrame):
+    kpis = [("จำนวนแถวผลลัพธ์", f"{len(df):,}", "")]
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    for col in numeric_cols[:2]:
+        total = df[col].sum()
+        avg = df[col].mean()
+        kpis.append((f"รวม {col}", format_kpi_number(total), f"เฉลี่ย {format_kpi_number(avg)} / แถว"))
+    id_like_keywords = ["customer", "order", "user", "ลูกค้า"]
+    for col in df.columns:
+        col_lower = col.lower()
+        if any(kw in col_lower for kw in id_like_keywords) and len(kpis) < 4:
+            distinct_count = df[col].nunique()
+            kpis.append((f"จำนวน {col} ไม่ซ้ำ", f"{distinct_count:,}", ""))
+    return kpis[:4]
+
+
+def render_kpi_cards(df: pd.DataFrame):
+    kpis = compute_kpis(df)
+    cards_html = "".join(
+        f"""<div class="kpi-card">
+                <div class="kpi-label">{label}</div>
+                <div class="kpi-value">{value}</div>
+                <div class="kpi-sub">{sub}</div>
+            </div>"""
+        for label, value, sub in kpis
+    )
+    st.markdown(f'<div class="kpi-grid">{cards_html}</div>', unsafe_allow_html=True)
+
+
+def style_chart_theme(fig):
+    fig.update_layout(
+        paper_bgcolor=COLOR_SURFACE,
+        plot_bgcolor=COLOR_SURFACE,
+        font=dict(family="IBM Plex Sans, sans-serif", color=COLOR_TEXT),
+        title_font=dict(family="Source Serif 4, serif", size=18, color=COLOR_TEXT),
+        colorway=PLOTLY_COLORWAY,
+        margin=dict(t=56, l=10, r=10, b=10),
+    )
+    fig.update_xaxes(gridcolor=COLOR_BORDER, zerolinecolor=COLOR_BORDER)
+    fig.update_yaxes(gridcolor=COLOR_BORDER, zerolinecolor=COLOR_BORDER)
+    return fig
+
+
 @st.cache_resource
 def load_agent(api_key: str = None):
     return EnterpriseDataAgent(api_key=api_key) if api_key else EnterpriseDataAgent()
 
-# ถ้าไม่ได้ตั้งค่า GEMINI_API_KEY ไว้ใน Streamlit Secrets/Environment Variable
-# ให้ผู้ใช้กรอกเองในหน้า UI ได้ (มีประโยชน์เวลารันทดสอบในเครื่อง หรือแชร์แอปให้คนอื่นลองโดยไม่ต้องแตะ secrets.toml)
+
 manual_api_key = None
 try:
     _has_secret_key = "GEMINI_API_KEY" in st.secrets
 except Exception:
     _has_secret_key = False
 if not _has_secret_key and not os.environ.get("GEMINI_API_KEY"):
-    with st.expander("🔑 ยังไม่ได้ตั้งค่า GEMINI_API_KEY — กรอกที่นี่ชั่วคราว (ไม่บันทึกถาวร)"):
+    with st.expander("🔑 ยังไม่ได้ตั้งค่า GEMINI_API_KEY — กรอกที่นี่ชั่วคราว"):
         manual_api_key = st.text_input("Gemini API Key", type="password", key="manual_api_key_input")
 
 with st.spinner("กำลังเชื่อมต่อฐานข้อมูล และสร้าง Data Engine Views..."):
@@ -988,9 +861,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ------------------------------------------
-# Dual Engine Selector: Cloud (Gemini API) vs Local (Ollama)
-# ------------------------------------------
 with st.container(border=True):
     st.markdown("**⚙️ เลือก AI Engine**")
     engine_choice = st.radio(
@@ -1020,33 +890,20 @@ with st.container(border=True):
         st.caption(f"⚠️ Empty Response: {info['empty_response_label']}")
         st.caption(f"ℹ️ {info['note']}")
 
-        # ค่า default ตั้งไว้ที่ localhost:11434 (พอร์ตของ Ollama) เสมอ
-        # หมายเหตุ: ห้ามเผลอใส่พอร์ตของแอป Streamlit เอง (มักเป็น 8501) ลงในช่องนี้
         ollama_url = st.text_input(
             "Ollama Server URL (on-prem ภายในองค์กร)",
             value=agent.ollama_base_url,
-            help="ชี้ไปที่ Ollama server ภายใน network ขององค์กร (เช่น http://10.0.x.x:11434) "
-                 "หรือปล่อย localhost ไว้ถ้ารันบนเครื่องเดียวกัน (default: http://localhost:11434 "
-                 "— ไม่ใช่พอร์ตของแอป Streamlit เอง)",
+            help="ชี้ไปที่ Ollama server ภายใน network (default: http://localhost:11434)",
             key="ollama_url_input",
         )
-
-        # DEBUG: โชว์ค่า URL ที่ widget เก็บไว้จริง ๆ ตอนนี้ (ช่วยจับเคส session state ค้างค่าเก่า
-        # หรือพิมพ์ผิดพลาด เช่น เผลอใส่พอร์ตของแอปเองแทนพอร์ตของ Ollama)
-        st.caption(f"🔧 DEBUG: ค่า Ollama URL ที่จะใช้จริง = {ollama_url!r}")
-
         st.markdown(
-            '<span class="privacy-badge local">🔒 Data Privacy: schema, ผลลัพธ์ query และ prompt '
-            'จะถูกส่งไปยัง Ollama server ที่ระบุเท่านั้น — ไม่ออกนอกเครือข่ายองค์กร ไม่มีการส่งไป Google '
-            'หรือ Cloud ภายนอกใด ๆ เหมาะสำหรับข้อมูลลูกค้า/ยอดขายที่มีความอ่อนไหว</span>',
+            '<span class="privacy-badge local">🔒 Data Privacy: ข้อมูลทั้งหมดจะประมวลผลบน Local Ollama server ที่ระบุเท่านั้น</span>',
             unsafe_allow_html=True,
         )
     else:
         st.caption("ใช้ Gemini API ผ่าน Cloud — ต้องตั้งค่า GEMINI_API_KEY")
         st.markdown(
-            '<span class="privacy-badge cloud">⚠️ Data Privacy: schema ตาราง และตัวอย่างผลลัพธ์ query '
-            '(สูงสุด 20 แถว) จะถูกส่งออกไปยัง Google Gemini API ซึ่งเป็น Cloud ภายนอกองค์กร '
-            'หากข้อมูลมีความอ่อนไหวสูง แนะนำสลับไปใช้ Local Engine</span>',
+            '<span class="privacy-badge cloud">⚠️ Data Privacy: schema ตารางและตัวอย่างข้อมูลจะถูกส่งไปยัง Google Cloud</span>',
             unsafe_allow_html=True,
         )
 
@@ -1069,8 +926,6 @@ with tab1:
                         user_query, df_result, engine=engine, local_model=local_model, ollama_url=ollama_url
                     )
 
-            # เก็บผลลัพธ์ทั้งหมดไว้ใน session_state — จำเป็นเพราะปุ่ม Feedback/Export
-            # จะทำให้ Streamlit rerun สคริปต์ใหม่ทุกครั้งที่กด ถ้าไม่เก็บไว้ผลลัพธ์จะหายไปทันที
             st.session_state["last_result"] = {
                 "user_query": user_query,
                 "df_result": df_result,
@@ -1081,10 +936,6 @@ with tab1:
                 "local_model": local_model,
             }
 
-    # --------------------------------------------------
-    # แสดงผลลัพธ์จาก session_state เสมอ (ไม่ใช่แค่ตอนกดปุ่มประมวลผลรอบล่าสุด)
-    # เพื่อให้ผลลัพธ์ไม่หายไปตอนกดปุ่ม Feedback หรือ Export ที่ทำให้หน้าต้อง rerun
-    # --------------------------------------------------
     result = st.session_state.get("last_result")
     if result:
         user_query = result["user_query"]
@@ -1116,9 +967,6 @@ with tab1:
             with st.expander("🧮 ตัวเลขสถิติที่คำนวณจริง (Statistical Insights — raw numbers)"):
                 st.text(stats_text)
 
-            # --------------------------------------------------
-            # Export Report — รวมตาราง, กราฟ, Executive Summary เป็น Excel/PDF ในคลิกเดียว
-            # --------------------------------------------------
             st.markdown("**📥 Export รายงานสรุป**")
             exp_col1, exp_col2, exp_col_spacer = st.columns([1, 1, 4])
 
@@ -1148,13 +996,6 @@ with tab1:
                     )
                 except Exception as e:
                     st.error(f"สร้างไฟล์ PDF ไม่สำเร็จ: {e}")
-
-            if _find_thai_font_path() is None:
-                st.caption(
-                    "⚠️ ไม่พบไฟล์ Thai font ในโฟลเดอร์ fonts/ — PDF จะแสดงภาษาไทยไม่ได้ (ขึ้นเป็นช่องว่าง) "
-                    "ดาวน์โหลดฟอนต์ Sarabun จาก Google Fonts แล้ววางไว้ที่ fonts/Sarabun-Regular.ttf เพื่อแก้ปัญหานี้ "
-                    "(Excel ไม่มีปัญหานี้ เพราะรองรับภาษาไทยในตัวอยู่แล้ว)"
-                )
         else:
             st.warning("ไม่พบข้อมูล หรือเกิดข้อผิดพลาดในการรัน SQL")
 
@@ -1163,10 +1004,6 @@ with tab1:
             for log in logs:
                 st.write(log)
 
-        # --------------------------------------------------
-        # Feedback & Rating — ให้ผู้ใช้ประเมิน SQL ที่ AI generate ว่าถูกต้องไหม
-        # เก็บทุกครั้งที่กด ไม่ว่าผลลัพธ์จะว่างหรือมีข้อมูล (เพื่อวัด accuracy ครบทุกกรณี)
-        # --------------------------------------------------
         st.markdown("**SQL ที่ AI สร้างถูกต้องไหม?**")
         fb_col1, fb_col2, fb_col_spacer = st.columns([1, 1, 6])
         row_count_for_feedback = int(len(df_result)) if df_result is not None else 0
@@ -1217,7 +1054,6 @@ with tab2:
                     [{"Column Name": c[0], "Data Type": c[1]} for c in cols if len(c) >= 2],
                     use_container_width=True
                 )
-
                 st.markdown("**👀 Sample Data (Top 3 rows):**")
                 try:
                     sample_df = agent.con.execute(f"SELECT * FROM {t_name} LIMIT 3").df()
@@ -1227,12 +1063,12 @@ with tab2:
 
 with tab3:
     st.subheader("📝 สรุปผล Feedback จากผู้ใช้งานจริง")
-    st.caption("ข้อมูลนี้เก็บสะสมทุกครั้งที่มีคนกด 👍/👎 ใต้ SQL ที่ AI สร้าง — ใช้ประกอบวัด Accuracy เพิ่มเติมจาก benchmark 150 ข้อได้")
+    st.caption("ข้อมูลนี้เก็บสะสมทุกครั้งที่มีคนกด 👍/👎 ใต้ SQL ที่ AI สร้าง")
 
     feedback_df = get_feedback_stats()
 
     if feedback_df.empty:
-        st.info("ยังไม่มี Feedback เข้ามา — ลองไปกดปุ่ม 👍/👎 ที่แท็บ 'AI Query Engine' หลังรันคำถามดูก่อน")
+        st.info("ยังไม่มี Feedback เข้ามา — ลองไปกดปุ่ม 👍/👎 ที่แท็บ 'AI Query Engine' ดูก่อนครับ")
     else:
         total_fb = len(feedback_df)
         up_count = int((feedback_df["rating"] == "up").sum())
@@ -1244,30 +1080,6 @@ with tab3:
         kpi_c2.metric("👍 ถูกต้อง", f"{up_count:,}")
         kpi_c3.metric("👎 ไม่ถูกต้อง", f"{down_count:,}")
         kpi_c4.metric("Accuracy จาก Feedback", f"{accuracy_pct:.1f}%")
-
-        st.markdown("---")
-
-        # สรุปแยกตาม Engine / โมเดล — เทียบกับ benchmark เดิม (19.33% / 22.00%) ได้เลย
-        st.markdown("**📊 สรุปแยกตาม Engine / โมเดล**")
-        breakdown = (
-            feedback_df.assign(
-                engine_label=feedback_df.apply(
-                    lambda r: f"{r['engine']} ({r['local_model']})" if r["engine"] == "local" and r["local_model"]
-                    else r["engine"],
-                    axis=1,
-                )
-            )
-            .groupby("engine_label")["rating"]
-            .value_counts()
-            .unstack(fill_value=0)
-        )
-        if "up" not in breakdown.columns:
-            breakdown["up"] = 0
-        if "down" not in breakdown.columns:
-            breakdown["down"] = 0
-        breakdown["total"] = breakdown["up"] + breakdown["down"]
-        breakdown["accuracy_%"] = (breakdown["up"] / breakdown["total"] * 100).round(1)
-        st.dataframe(breakdown, use_container_width=True)
 
         st.markdown("---")
         st.markdown("**🕒 ประวัติ Feedback ล่าสุด**")
