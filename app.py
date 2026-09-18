@@ -753,25 +753,10 @@ def style_chart_theme(fig):
     return fig
 
 
+
 # ==========================================
-# Export Report System — รวมตาราง, กราฟ, Executive Summary ออกเป็น Excel / PDF ได้ในคลิกเดียว
+# Export Report System — รวมตาราง และ Executive Summary ออกเป็น Excel ได้ในคลิกเดียว
 # ==========================================
-
-# หา Thai font ที่ bundle ไว้เอง (จำเป็นสำหรับ PDF เพราะ fpdf2 ไม่มี font ไทยมาให้ในตัว)
-# ถ้าไม่เจอไฟล์ font จะ fallback ไปใช้ font builtin ซึ่ง "แสดงภาษาไทยไม่ได้" (ขึ้นเป็นกล่องว่าง)
-_THAI_FONT_CANDIDATES = [
-    os.path.join("fonts", "Sarabun-Regular.ttf"),
-    os.path.join("fonts", "THSarabunNew.ttf"),
-    "/usr/share/fonts/truetype/thai/Sarabun-Regular.ttf",
-    "/System/Library/Fonts/Supplemental/Ayuthaya.ttf",  # macOS มักมีฟอนต์นี้ติดเครื่องมาให้ รองรับไทยได้บางส่วน
-]
-
-
-def _find_thai_font_path():
-    for path in _THAI_FONT_CANDIDATES:
-        if os.path.exists(path):
-            return path
-    return None
 
 
 def build_excel_report(user_query, df_result, summary_text, stats_text, final_sql):
@@ -826,137 +811,6 @@ def build_excel_report(user_query, df_result, summary_text, stats_text, final_sq
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
-
-
-def build_pdf_report(user_query, df_result, summary_text, stats_text, final_sql, chart_figs):
-    """
-    สร้างไฟล์ PDF รวม: คำถาม, Executive Summary, ตารางข้อมูล (preview), กราฟ (แปลงเป็นรูปด้วย kaleido), สถิติ
-    คืนค่าเป็น bytes พร้อมส่งเข้า st.download_button โดยตรง
-    หมายเหตุ: ต้องมี Thai font ไฟล์ (.ttf) วางไว้ในโฟลเดอร์ fonts/ ไม่งั้นข้อความไทยจะแสดงไม่ได้
-    """
-    import io
-    from fpdf import FPDF
-
-    thai_font_path = _find_thai_font_path()
-
-    pdf = FPDF()
-    pdf.add_page()
-
-    if thai_font_path:
-        pdf.add_font("Thai", "", thai_font_path, uni=True)
-        pdf.set_font("Thai", size=16)
-    else:
-        # Fallback: font builtin ไม่รองรับภาษาไทย — เตือนไว้ใน UI แล้วว่าอาจแสดงผลผิดเพี้ยน
-        pdf.set_font("Helvetica", size=16)
-
-    pdf.set_text_color(20, 20, 20)
-    pdf.multi_cell(0, 10, "Enterprise Data Agent — รายงานสรุปผลการวิเคราะห์")
-    pdf.ln(2)
-
-    pdf.set_font(pdf.font_family, size=11)
-    pdf.set_text_color(60, 60, 60)
-    pdf.multi_cell(0, 7, f"คำถามของผู้ใช้: {user_query}")
-    pdf.ln(2)
-
-    pdf.set_font(pdf.font_family, size=13)
-    pdf.set_text_color(20, 20, 20)
-    pdf.multi_cell(0, 8, "บทสรุปการวิเคราะห์ (Executive Summary)")
-    pdf.set_font(pdf.font_family, size=10)
-    pdf.set_text_color(50, 50, 50)
-    pdf.multi_cell(0, 6, summary_text)
-    pdf.ln(3)
-
-    # ตารางข้อมูล (แสดงตัวอย่างสูงสุด 25 แถวแรก กันไฟล์ยาวเกินไป)
-    # ความกว้างคอลัมน์ต้องมีขั้นต่ำไว้เสมอ ไม่งั้นถ้าคอลัมน์เยอะเกินไป (เช่น 10+ คอลัมน์)
-    # หารเท่า ๆ กันแล้วจะแคบจนฟอนต์ใส่ตัวอักษรแม้แค่ตัวเดียวก็ไม่พอ (fpdf2 จะ error ทันที)
-    pdf.set_font(pdf.font_family, size=13)
-    pdf.set_text_color(20, 20, 20)
-    pdf.multi_cell(0, 8, f"ตารางผลลัพธ์ข้อมูล (แสดง {min(25, len(df_result))} จาก {len(df_result)} แถว)")
-
-    preview_df_full = df_result.head(25)
-
-    try:
-        page_width_mm = 190
-        min_col_width_mm = 22  # ขั้นต่ำต่อคอลัมน์ที่ฟอนต์ไทยขนาด 7-8pt ยังพอใส่ตัวอักษรได้จริง
-        max_cols_fit = max(int(page_width_mm // min_col_width_mm), 1)
-
-        columns_truncated = False
-        if len(preview_df_full.columns) > max_cols_fit:
-            preview_df = preview_df_full.iloc[:, :max_cols_fit]
-            columns_truncated = True
-        else:
-            preview_df = preview_df_full
-
-        n_cols = max(len(preview_df.columns), 1)
-        col_width = max(page_width_mm / n_cols, min_col_width_mm)
-
-        # ปรับขนาดฟอนต์ลงถ้าคอลัมน์เยอะ เพื่อให้ตัวอักษรใส่ในช่องได้จริง ไม่ error
-        table_font_size = 8 if n_cols <= 6 else 7
-        pdf.set_font(pdf.font_family, size=table_font_size)
-        pdf.set_text_color(40, 40, 40)
-
-        # จำนวนตัวอักษรสูงสุดต่อช่องอิงตามความกว้างจริง กันข้อความล้นช่อง (โดยเฉพาะฟอนต์ไทยที่กว้างกว่า Latin)
-        max_chars = max(int(col_width / 2.2), 4)
-
-        for col in preview_df.columns:
-            pdf.cell(col_width, 6, str(col)[:max_chars], border=1)
-        pdf.ln()
-        for _, row in preview_df.iterrows():
-            for val in row:
-                pdf.cell(col_width, 6, str(val)[:max_chars], border=1)
-            pdf.ln()
-
-        if columns_truncated:
-            pdf.set_font(pdf.font_family, size=8)
-            pdf.set_text_color(120, 120, 120)
-            pdf.multi_cell(
-                0, 6,
-                f"หมายเหตุ: ตารางมีทั้งหมด {len(preview_df_full.columns)} คอลัมน์ "
-                f"แสดงใน PDF นี้เพียง {max_cols_fit} คอลัมน์แรก (ดูข้อมูลครบทุกคอลัมน์ได้จากไฟล์ Excel แทน)"
-            )
-    except Exception:
-        # Safety net: ถ้าโหมดตาราง (fixed-width cell) ยัง error ไม่ว่าเหตุผลอะไรก็ตาม
-        # ให้ fallback มาแสดงแบบ "รายการ" แทน — ใช้ multi_cell(0, ...) ซึ่งกว้างเท่าหน้ากระดาษเสมอ
-        # จึงไม่มีทางเจอปัญหา "ความกว้างไม่พอ" แบบตาราง fixed-width อีก
-        pdf.set_font(pdf.font_family, size=9)
-        pdf.set_text_color(40, 40, 40)
-        pdf.multi_cell(0, 6, "(แสดงผลแบบตารางไม่สำเร็จ จึงแสดงเป็นรายการแทน)")
-        pdf.ln(1)
-        for idx, row in preview_df_full.iterrows():
-            row_text = " | ".join(f"{col}: {val}" for col, val in row.items())
-            pdf.multi_cell(0, 5, row_text)
-            pdf.ln(1)
-    pdf.ln(4)
-
-    # กราฟ — แปลง Plotly fig เป็นรูปด้วย kaleido แล้วฝังลง PDF
-    if chart_figs:
-        for title, fig in chart_figs:
-            try:
-                img_bytes = fig.to_image(format="png", width=900, height=500, scale=2)
-                pdf.set_font(pdf.font_family, size=12)
-                pdf.set_text_color(20, 20, 20)
-                pdf.multi_cell(0, 8, title)
-                img_buf = io.BytesIO(img_bytes)
-                pdf.image(img_buf, w=180)
-                pdf.ln(4)
-            except Exception as e:
-                pdf.set_font(pdf.font_family, size=9)
-                pdf.multi_cell(0, 6, f"[ไม่สามารถสร้างรูปกราฟ '{title}' ได้: {e}]")
-
-    # สถิติที่คำนวณจริง
-    pdf.set_font(pdf.font_family, size=13)
-    pdf.set_text_color(20, 20, 20)
-    pdf.multi_cell(0, 8, "สถิติที่คำนวณจริง (Statistical Insights)")
-    pdf.set_font(pdf.font_family, size=9)
-    pdf.set_text_color(50, 50, 50)
-    pdf.multi_cell(0, 6, stats_text)
-    pdf.ln(4)
-
-    pdf.set_font(pdf.font_family, size=7)
-    pdf.set_text_color(150, 150, 150)
-    pdf.multi_cell(0, 5, f"SQL ที่ใช้: {final_sql}")
-
-    return bytes(pdf.output())
 
 
 @st.cache_resource
@@ -1117,44 +971,20 @@ with tab1:
                 st.text(stats_text)
 
             # --------------------------------------------------
-            # Export Report — รวมตาราง, กราฟ, Executive Summary เป็น Excel/PDF ในคลิกเดียว
+            # Export Report — รวมตาราง, Executive Summary เป็น Excel ในคลิกเดียว
             # --------------------------------------------------
             st.markdown("**📥 Export รายงานสรุป**")
-            exp_col1, exp_col2, exp_col_spacer = st.columns([1, 1, 4])
-
-            with exp_col1:
-                try:
-                    excel_bytes = build_excel_report(user_query, df_result, summary, stats_text, final_sql)
-                    st.download_button(
-                        "📊 ดาวน์โหลด Excel",
-                        data=excel_bytes,
-                        file_name="enterprise_data_agent_report.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="export_excel_btn",
-                    )
-                except Exception as e:
-                    st.error(f"สร้างไฟล์ Excel ไม่สำเร็จ: {e}")
-
-            with exp_col2:
-                try:
-                    styled_charts = [(title, style_chart_theme(fig)) for title, fig in charts]
-                    pdf_bytes = build_pdf_report(user_query, df_result, summary, stats_text, final_sql, styled_charts)
-                    st.download_button(
-                        "📄 ดาวน์โหลด PDF",
-                        data=pdf_bytes,
-                        file_name="enterprise_data_agent_report.pdf",
-                        mime="application/pdf",
-                        key="export_pdf_btn",
-                    )
-                except Exception as e:
-                    st.error(f"สร้างไฟล์ PDF ไม่สำเร็จ: {e}")
-
-            if _find_thai_font_path() is None:
-                st.caption(
-                    "⚠️ ไม่พบไฟล์ Thai font ในโฟลเดอร์ fonts/ — PDF จะแสดงภาษาไทยไม่ได้ (ขึ้นเป็นช่องว่าง) "
-                    "ดาวน์โหลดฟอนต์ Sarabun จาก Google Fonts แล้ววางไว้ที่ fonts/Sarabun-Regular.ttf เพื่อแก้ปัญหานี้ "
-                    "(Excel ไม่มีปัญหานี้ เพราะรองรับภาษาไทยในตัวอยู่แล้ว)"
+            try:
+                excel_bytes = build_excel_report(user_query, df_result, summary, stats_text, final_sql)
+                st.download_button(
+                    "📊 ดาวน์โหลด Excel",
+                    data=excel_bytes,
+                    file_name="enterprise_data_agent_report.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="export_excel_btn",
                 )
+            except Exception as e:
+                st.error(f"สร้างไฟล์ Excel ไม่สำเร็จ: {e}")
         else:
             st.warning("ไม่พบข้อมูล หรือเกิดข้อผิดพลาดในการรัน SQL")
 
