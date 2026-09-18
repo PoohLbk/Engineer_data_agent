@@ -74,7 +74,6 @@ def get_feedback_stats():
 
 # ------------------------------------------
 # Local Engine (Ollama) — benchmark ที่วัดได้จริงบน dataset ทดสอบ 150 ข้อ
-# แสดงให้ผู้ใช้เห็นก่อนเลือก เพื่อความโปร่งใสเชิงวิจัย (ใช้ประกอบเล่ม Senior Project ได้)
 # ------------------------------------------
 LOCAL_MODEL_INFO = {
     "qwen2.5-coder:7b": {
@@ -95,7 +94,7 @@ LOCAL_MODEL_INFO = {
 
 
 def _find_datetime_col(df: pd.DataFrame):
-    """หาคอลัมน์ที่เป็นวันที่/เวลา (รวมถึงลองแปลงจาก object ที่หน้าตาเหมือนวันที่)"""
+    """หาคอลัมน์ที่เป็นวันที่/เวลา"""
     datetime_cols = df.select_dtypes(include="datetime").columns.tolist()
     if not datetime_cols:
         for col in df.select_dtypes(include="object").columns:
@@ -109,17 +108,14 @@ def _find_datetime_col(df: pd.DataFrame):
 
 
 def generate_charts(df: pd.DataFrame):
-    """
-    วิเคราะห์รูปร่างของผลลัพธ์ query แล้วสร้างกราฟ Plotly ที่เหมาะสมโดยอัตโนมัติ
-    คืนค่าเป็น list ของ (หัวข้อกราฟ, figure) — อาจมีมากกว่า 1 กราฟต่อผลลัพธ์
-    """
+    """วิเคราะห์รูปร่างของผลลัพธ์ query แล้วสร้างกราฟ Plotly ที่เหมาะสมโดยอัตโนมัติ"""
     charts = []
     if df is None or df.empty or df.shape[1] < 2:
         return charts
 
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     if not numeric_cols:
-        return charts  # ไม่มีตัวเลขให้พล็อตเลย
+        return charts 
 
     y_col = numeric_cols[0]
     date_col = _find_datetime_col(df)
@@ -143,13 +139,13 @@ def generate_charts(df: pd.DataFrame):
         fig_bar.update_layout(xaxis_tickangle=-30)
         charts.append(("เปรียบเทียบตามหมวดหมู่ (Bar)", fig_bar))
 
-        # Pie chart — เฉพาะกรณีหมวดหมู่ไม่เยอะเกินไป (สัดส่วนอ่านง่าย)
+        # Pie chart
         if grouped[cat_col].nunique() <= 8:
             fig_pie = px.pie(grouped, names=cat_col, values=y_col,
                              title=f"สัดส่วน {y_col} ตาม {cat_col}", hole=0.35)
             charts.append(("สัดส่วนโดยรวม (Pie)", fig_pie))
 
-        # Pareto chart (80/20) — เฉพาะกรณีมีหลายหมวดหมู่พอจะวิเคราะห์
+        # Pareto chart (80/20)
         if grouped[cat_col].nunique() >= 3:
             pareto_df = grouped.head(15).reset_index(drop=True)
             total = pareto_df[y_col].sum()
@@ -182,14 +178,7 @@ def generate_charts(df: pd.DataFrame):
 
 
 def compute_statistical_insights(df: pd.DataFrame) -> str:
-    """
-    คำนวณสถิติเชิงวิเคราะห์เบื้องต้นจริงจาก DataFrame (ไม่ใช่ให้ LLM เดาตัวเลขเอง):
-    - สถิติพื้นฐาน (mean/median/std/min/max)
-    - Outlier detection ด้วยกฎ IQR
-    - Pareto (80/20): ต้องใช้กี่หมวดหมู่ถึงจะครอบคลุม 80% ของยอดรวม
-    - % การเติบโตเทียบครึ่งแรก vs ครึ่งหลังของข้อมูล (ถ้ามีคอลัมน์วันที่)
-    ผลลัพธ์เป็นข้อความสรุป ใช้เป็น "ground truth" ป้อนให้ Gemini เขียนบรรยายต่อ
-    """
+    """คำนวณสถิติเชิงวิเคราะห์เบื้องต้นจริงจาก DataFrame"""
     if df is None or df.empty:
         return "ไม่มีข้อมูลเพียงพอสำหรับวิเคราะห์เชิงสถิติ"
 
@@ -210,7 +199,6 @@ def compute_statistical_insights(df: pd.DataFrame) -> str:
         f"ต่ำสุด={series.min():,.2f}, สูงสุด={series.max():,.2f} (n={len(series)})"
     )
 
-    # Outlier detection ด้วย IQR
     q1, q3 = series.quantile(0.25), series.quantile(0.75)
     iqr = q3 - q1
     lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
@@ -220,7 +208,6 @@ def compute_statistical_insights(df: pd.DataFrame) -> str:
         f"จากทั้งหมด {len(series)} แถว (ช่วงปกติโดยประมาณ {lower:,.2f} ถึง {upper:,.2f})"
     )
 
-    # Pareto 80/20 (ต้องมีคอลัมน์หมวดหมู่)
     date_col_probe = _find_datetime_col(df)
     non_numeric_cols = [c for c in df.columns if c not in numeric_cols and c != date_col_probe]
     if non_numeric_cols:
@@ -238,7 +225,6 @@ def compute_statistical_insights(df: pd.DataFrame) -> str:
                 f"ที่รวมกันสร้าง '{main_col}' ได้ถึงประมาณ 80% ของยอดรวมทั้งหมด"
             )
 
-    # % การเติบโต ครึ่งแรก vs ครึ่งหลัง (ถ้ามีคอลัมน์วันที่)
     if date_col_probe:
         df_sorted = df.sort_values(by=date_col_probe)
         mid = len(df_sorted) // 2
@@ -258,18 +244,11 @@ def compute_statistical_insights(df: pd.DataFrame) -> str:
 # 1. Class: EnterpriseDataAgent (Data Engine)
 # ==========================================
 class OllamaConnectionError(RuntimeError):
-    """แยกออกมาเฉพาะสำหรับ error ระดับ infrastructure (เชื่อมต่อ Ollama ไม่ได้เลย)
-    เพื่อไม่ให้ self-correction loop เสีย attempt ไป retry ปัญหาที่ retry ไปก็ไม่หาย"""
     pass
 
 
 class EnterpriseDataAgent:
     def __init__(self, api_key: str = None):
-        """
-        api_key: ระบุ Gemini API Key เองได้โดยตรง (เช่น จาก UI ให้ผู้ใช้กรอกเอง)
-        ถ้าไม่ระบุ (None) จะ fallback ไปดึงจาก Streamlit Secrets หรือ Environment Variable ตามเดิม
-        """
-        # 1. ใช้ api_key ที่ส่งเข้ามาก่อน ถ้าไม่มีค่อย fallback ไป Streamlit Secrets / Environment Variable
         if not api_key:
             try:
                 if "GEMINI_API_KEY" in st.secrets:
@@ -279,26 +258,19 @@ class EnterpriseDataAgent:
             except Exception:
                 api_key = os.environ.get("GEMINI_API_KEY")
 
-        # 2. เริ่มต้นสร้าง Gemini Client
         if api_key:
             self.client = genai.Client(api_key=api_key)
         else:
             self.client = None
             print("Warning: GEMINI_API_KEY not found.")
 
-        # ตั้งค่าโมเดลหลักและโมเดลสำรองให้เป็นรุ่นที่รองรับบน API ปัจจุบัน (Cloud Engine)
         self.primary_model = "gemini-3.6-flash"
         self.fallback_model = "gemini-3.5-flash"
-
-        # ตั้งค่า Local Engine (Ollama) — รันบนเครื่อง ไม่ต้องใช้ API Key
         self.ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
-        # 3. เชื่อมต่อ DuckDB ใน Memory
         self.con = duckdb.connect(database=':memory:')
 
-        # 4. โหลดข้อมูลแบบ VIEW (Lazy Load ช่วยให้เปิดแอปได้เร็ว)
         base_url = "https://github.com/PoohLbk/Engineer_data_agent/releases/download/v1.0"
-
         files_to_load = {
             "customer_master": f"{base_url}/customer_master.csv",
             "dataset_statistics": f"{base_url}/dataset_statistics.csv",
@@ -314,7 +286,6 @@ class EnterpriseDataAgent:
                 print(f"Error loading {table_name}: {e}")
 
     def _call_gemini_with_fallback(self, prompt):
-        """เรียกใช้งาน API หากโมเดลหลักติด Error ให้สลับไปใช้โมเดลสำรองอัตโนมัติ"""
         try:
             response = self.client.models.generate_content(
                 model=self.primary_model,
@@ -330,10 +301,6 @@ class EnterpriseDataAgent:
             return response.text
 
     def _call_ollama(self, prompt, model_name, max_empty_retries=1, base_url=None):
-        """
-        เรียกโมเดล Local ผ่าน Ollama REST API
-        base_url: ที่อยู่ Ollama server — ถ้าไม่ระบุจะใช้ self.ollama_base_url (default: localhost)
-        """
         url = (base_url or self.ollama_base_url or "").strip().rstrip("/")
         last_err_detail = "unknown error"
 
@@ -367,19 +334,13 @@ class EnterpriseDataAgent:
                 print(f"[Ollama] {last_err_detail} — attempt {attempt + 1}/{max_empty_retries + 1}")
             except requests.exceptions.ConnectionError as e:
                 raise OllamaConnectionError(
-                    f"เชื่อมต่อ Ollama ไม่ได้ที่ {url} — "
-                    f"[DEBUG: {type(e).__name__}: {e}] "
+                    f"เชื่อมต่อ Ollama ไม่ได้ที่ {url} — [DEBUG: {type(e).__name__}: {e}] "
                     "ตรวจสอบว่ารัน `ollama serve` อยู่ และ pull โมเดลไว้แล้ว"
                 )
             except requests.exceptions.HTTPError as e:
-                raise RuntimeError(
-                    f"Ollama ตอบกลับด้วย HTTP error ({resp.status_code}) ที่ {url}/api/generate — "
-                    f"[DEBUG: {e}] ตรวจสอบว่าพอร์ตถูกต้อง (เช่น http://localhost:11434)"
-                )
+                raise RuntimeError(f"Ollama ตอบกลับด้วย HTTP error ({resp.status_code}) ที่ {url}/api/generate — [DEBUG: {e}]")
             except requests.exceptions.Timeout as e:
-                raise RuntimeError(
-                    f"Ollama ที่ {url} ไม่ตอบสนองภายในเวลาที่กำหนด (timeout) — [DEBUG: {e}]"
-                )
+                raise RuntimeError(f"Ollama ที่ {url} ไม่ตอบสนองภายในเวลาที่กำหนด (timeout) — [DEBUG: {e}]")
             except requests.exceptions.RequestException as e:
                 raise RuntimeError(f"Ollama API error: [DEBUG: {type(e).__name__}: {e}]")
 
@@ -452,16 +413,12 @@ class EnterpriseDataAgent:
             except Exception as e:
                 last_error = str(e)
                 logs.append(f"[Attempt {attempt}] Execution Error: {last_error}")
-
                 prompt = f"""
                 {base_prompt}
-
                 คำสั่ง SQL ที่คุณเขียนก่อนหน้านี้:
                 {sql_query}
-
                 รันแล้วเจอ error นี้:
                 {last_error}
-
                 กรุณาแก้ไขคำสั่ง SQL ให้ถูกต้องตาม schema ที่ให้ไว้ข้างต้น
                 Return ONLY the raw SQL query without codeblock formatting or explanations.
                 """
@@ -472,7 +429,6 @@ class EnterpriseDataAgent:
     def generate_executive_summary(self, user_query, df_result, engine="cloud", local_model=None, ollama_url=None):
         if df_result is None or df_result.empty:
             return "ไม่พบข้อมูลสำหรับสรุปผลลัพธ์"
-
         if engine == "cloud" and not self.client:
             return "ไม่สามารถสรุปผลลัพธ์ได้เนื่องจากขาด GEMINI_API_KEY"
         if engine == "local" and not local_model:
@@ -483,12 +439,9 @@ class EnterpriseDataAgent:
 
         prompt = f"""
         คุณเป็น Data Analyst / Data Scientist ผู้เชี่ยวชาญ กรุณาสรุปผลลัพธ์จากข้อมูลด้านล่างนี้ เพื่อตอบคำถามของผู้ใช้:
-
         คำถามของผู้ใช้: "{user_query}"
-
         ผลลัพธ์ข้อมูลที่ได้จาก Database (ตัวอย่าง 20 แถวแรก):
         {data_preview}
-
         ผลการวิเคราะห์เชิงสถิติที่คำนวณไว้ล่วงหน้าแล้ว:
         {stats_block}
 
@@ -498,7 +451,6 @@ class EnterpriseDataAgent:
         3. อ้างอิงผลการวิเคราะห์เชิงสถิติที่ให้ไว้ข้างต้น พร้อมข้อเสนอแนะเชิงธุรกิจ
         4. ตอบเป็นภาษาไทยที่สุภาพ เข้าใจง่าย และเป็นทางการ
         """
-
         try:
             summary_text = self._call_llm(prompt, engine=engine, local_model=local_model, ollama_url=ollama_url)
             if not summary_text.strip():
@@ -509,7 +461,7 @@ class EnterpriseDataAgent:
 
 
 # ==========================================
-# Export Report Systems (Excel & PDF with Column Width Fix)
+# Export Report Systems (Excel & PDF)
 # ==========================================
 def build_excel_report(user_query, df_result, summary_text, stats_text, final_sql):
     import io
@@ -537,15 +489,10 @@ def build_excel_report(user_query, df_result, summary_text, stats_text, final_sq
     ws_summary = wb.create_sheet("สรุปผล")
     ws_summary.column_dimensions["A"].width = 100
     rows_to_write = [
-        ("คำถามของผู้ใช้", user_query),
-        ("", ""),
-        ("SQL ที่ AI สร้าง", final_sql),
-        ("", ""),
-        ("บทสรุปการวิเคราะห์ (Executive Summary)", ""),
-        (summary_text, ""),
-        ("", ""),
-        ("สถิติที่คำนวณจริง (Statistical Insights)", ""),
-        (stats_text, ""),
+        ("คำถามของผู้ใช้", user_query), ("", ""),
+        ("SQL ที่ AI สร้าง", final_sql), ("", ""),
+        ("บทสรุปการวิเคราะห์ (Executive Summary)", ""), (summary_text, ""), ("", ""),
+        ("สถิติที่คำนวณจริง (Statistical Insights)", ""), (stats_text, ""),
     ]
     for label, value in rows_to_write:
         if value:
@@ -587,30 +534,42 @@ def build_pdf_report(user_query, df_result, summary_text, stats_text, final_sql,
     else:
         pdf.set_font("Helvetica", size=16)
 
+    # ---------------------------------------------------------
+    # ฟังก์ชันผู้ช่วย: บังคับตัดข้อความภาษาไทย ป้องกัน FPDF พังจากคำยาว
+    # ---------------------------------------------------------
+    def write_safe_text(pdf_obj, text, line_height=6, max_chars=90):
+        for paragraph in str(text).split('\n'):
+            paragraph = paragraph.strip()
+            if not paragraph:
+                pdf_obj.ln(line_height)
+                continue
+            for i in range(0, len(paragraph), max_chars):
+                chunk = paragraph[i:i+max_chars]
+                pdf_obj.multi_cell(0, line_height, chunk)
+
     pdf.set_text_color(20, 20, 20)
-    pdf.multi_cell(0, 10, "Enterprise Data Agent — รายงานสรุปผลการวิเคราะห์")
+    write_safe_text(pdf, "Enterprise Data Agent — รายงานสรุปผลการวิเคราะห์", line_height=10)
     pdf.ln(2)
 
     pdf.set_font(pdf.font_family, size=11)
     pdf.set_text_color(60, 60, 60)
-    pdf.multi_cell(0, 7, f"คำถามของผู้ใช้: {user_query}")
+    write_safe_text(pdf, f"คำถามของผู้ใช้: {user_query}", line_height=7)
     pdf.ln(2)
 
     pdf.set_font(pdf.font_family, size=13)
     pdf.set_text_color(20, 20, 20)
-    pdf.multi_cell(0, 8, "บทสรุปการวิเคราะห์ (Executive Summary)")
+    write_safe_text(pdf, "บทสรุปการวิเคราะห์ (Executive Summary)", line_height=8)
+    
     pdf.set_font(pdf.font_family, size=10)
     pdf.set_text_color(50, 50, 50)
-    pdf.multi_cell(0, 6, summary_text)
+    write_safe_text(pdf, summary_text, line_height=6, max_chars=110)
     pdf.ln(3)
 
-    # ตารางข้อมูล — จำกัดสูงสุด 6 คอลัมน์ ป้องกัน Error "Not enough horizontal space"
     pdf.set_font(pdf.font_family, size=13)
     pdf.set_text_color(20, 20, 20)
-    pdf.multi_cell(0, 8, f"ตารางผลลัพธ์ข้อมูล (แสดง {min(25, len(df_result))} จาก {len(df_result)} แถว)")
+    write_safe_text(pdf, f"ตารางผลลัพธ์ข้อมูล (แสดง {min(25, len(df_result))} จาก {len(df_result)} แถว)", line_height=8)
 
     preview_df_full = df_result.head(25)
-
     try:
         page_width_mm = 190
         max_cols_fit = min(len(preview_df_full.columns), 6)
@@ -622,30 +581,31 @@ def build_pdf_report(user_query, df_result, summary_text, stats_text, final_sql,
 
         pdf.set_font(pdf.font_family, size=7)
         pdf.set_text_color(40, 40, 40)
-        max_chars = max(int(col_width / 2.0), 4)
+        max_cell_chars = max(int(col_width / 2.0), 4)
 
         for col in preview_df.columns:
-            pdf.cell(col_width, 6, str(col)[:max_chars], border=1, align="center")
+            pdf.cell(col_width, 6, str(col)[:max_cell_chars], border=1, align="center")
         pdf.ln()
 
         for _, row in preview_df.iterrows():
             for val in row:
-                pdf.cell(col_width, 6, str(val)[:max_chars], border=1)
+                pdf.cell(col_width, 6, str(val)[:max_cell_chars], border=1)
             pdf.ln()
 
         if columns_truncated:
             pdf.ln(2)
             pdf.set_font(pdf.font_family, size=8)
             pdf.set_text_color(120, 120, 120)
-            pdf.multi_cell(
-                0, 5,
-                f"หมายเหตุ: ตารางมีทั้งหมด {len(preview_df_full.columns)} คอลัมน์ แสดงใน PDF นี้เพียง {max_cols_fit} คอลัมน์แรก "
-                f"(สามารถดาวน์โหลดไฟล์ Excel เพื่อดูข้อมูลครบทุกคอลัมน์ได้)"
+            write_safe_text(
+                pdf, 
+                f"หมายเหตุ: ตารางมีทั้งหมด {len(preview_df_full.columns)} คอลัมน์ แสดงใน PDF นี้เพียง {max_cols_fit} คอลัมน์แรก (สามารถดาวน์โหลดไฟล์ Excel เพื่อดูข้อมูลครบทุกคอลัมน์ได้)", 
+                line_height=5, 
+                max_chars=130
             )
     except Exception as e:
         pdf.set_font(pdf.font_family, size=9)
         pdf.set_text_color(40, 40, 40)
-        pdf.multi_cell(0, 6, f"(ไม่สามารถเรนเดอร์เป็นตารางได้: {e} — แนะนำให้ใช้ไฟล์ Excel)")
+        write_safe_text(pdf, f"(ไม่สามารถเรนเดอร์เป็นตารางได้: {e} — แนะนำให้ใช้ไฟล์ Excel)", line_height=6)
 
     pdf.ln(4)
 
@@ -655,25 +615,27 @@ def build_pdf_report(user_query, df_result, summary_text, stats_text, final_sql,
                 img_bytes = fig.to_image(format="png", width=900, height=500, scale=2)
                 pdf.set_font(pdf.font_family, size=12)
                 pdf.set_text_color(20, 20, 20)
-                pdf.multi_cell(0, 8, title)
+                write_safe_text(pdf, title, line_height=8)
+                
                 img_buf = io.BytesIO(img_bytes)
                 pdf.image(img_buf, w=180)
                 pdf.ln(4)
             except Exception as e:
                 pdf.set_font(pdf.font_family, size=9)
-                pdf.multi_cell(0, 6, f"[ไม่สามารถสร้างรูปกราฟ '{title}' ได้: {e}]")
+                write_safe_text(pdf, f"[ไม่สามารถสร้างรูปกราฟ '{title}' ได้: {e}]", line_height=6)
 
     pdf.set_font(pdf.font_family, size=13)
     pdf.set_text_color(20, 20, 20)
-    pdf.multi_cell(0, 8, "สถิติที่คำนวณจริง (Statistical Insights)")
+    write_safe_text(pdf, "สถิติที่คำนวณจริง (Statistical Insights)", line_height=8)
+    
     pdf.set_font(pdf.font_family, size=9)
     pdf.set_text_color(50, 50, 50)
-    pdf.multi_cell(0, 6, stats_text)
+    write_safe_text(pdf, stats_text, line_height=6, max_chars=120)
     pdf.ln(4)
 
     pdf.set_font(pdf.font_family, size=7)
     pdf.set_text_color(150, 150, 150)
-    pdf.multi_cell(0, 5, f"SQL ที่ใช้: {final_sql}")
+    write_safe_text(pdf, f"SQL ที่ใช้: {final_sql}", line_height=5, max_chars=150)
 
     return bytes(pdf.output())
 
@@ -778,7 +740,6 @@ h1, h2, h3 {{
 
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-
 def format_kpi_number(x):
     if x is None:
         return "-"
@@ -788,7 +749,6 @@ def format_kpi_number(x):
     if abs_x >= 1_000:
         return f"{x:,.0f}"
     return f"{x:,.2f}"
-
 
 def compute_kpis(df: pd.DataFrame):
     kpis = [("จำนวนแถวผลลัพธ์", f"{len(df):,}", "")]
@@ -805,7 +765,6 @@ def compute_kpis(df: pd.DataFrame):
             kpis.append((f"จำนวน {col} ไม่ซ้ำ", f"{distinct_count:,}", ""))
     return kpis[:4]
 
-
 def render_kpi_cards(df: pd.DataFrame):
     kpis = compute_kpis(df)
     cards_html = "".join(
@@ -817,7 +776,6 @@ def render_kpi_cards(df: pd.DataFrame):
         for label, value, sub in kpis
     )
     st.markdown(f'<div class="kpi-grid">{cards_html}</div>', unsafe_allow_html=True)
-
 
 def style_chart_theme(fig):
     fig.update_layout(
@@ -832,11 +790,9 @@ def style_chart_theme(fig):
     fig.update_yaxes(gridcolor=COLOR_BORDER, zerolinecolor=COLOR_BORDER)
     return fig
 
-
 @st.cache_resource
 def load_agent(api_key: str = None):
     return EnterpriseDataAgent(api_key=api_key) if api_key else EnterpriseDataAgent()
-
 
 manual_api_key = None
 try:
