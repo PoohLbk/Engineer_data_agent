@@ -18,13 +18,13 @@ from google import genai
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
-    from data_pipeline.pipeline.runner import run_pipeline
+    # แก้ไขพาธการนำเข้าให้ตรงกับโฟลเดอร์จริง
+    from data_pipeline.runner import run_pipeline
     HAS_PIPELINE = True
     PIPELINE_ERROR = ""
 except Exception as e:
     HAS_PIPELINE = False
     PIPELINE_ERROR = traceback.format_exc()
-
 # ==========================================
 # 1. Feedback & Rating System
 # ==========================================
