@@ -245,8 +245,11 @@ class EnterpriseDataAgent:
             self._load_fallback_data()
 
     def _load_fallback_data(self):
-        """โหลดข้อมูลแบบ View จาก GitHub (ทำงานต่อเมื่อ Pipeline ยังไม่รัน)"""
-        base_url = "https://github.com/PoohLbk/Engineer_data_agent/releases/download/v1.0"
+        """โหลดข้อมูลแบบ View จาก GitHub"""
+        
+        # ⚠️ เช็กตรงนี้: ลิงก์ต้องเป็นเวอร์ชันล่าสุด/แท็กที่ถูกต้องของ Release คุณ
+        base_url = "https://github.com/PoohLbk/Engineer_data_agent/releases/download/v1.0" 
+        
         files_to_load = {
             "customer_master": f"{base_url}/customer_master.csv",
             "dataset_statistics": f"{base_url}/dataset_statistics.csv",
@@ -254,6 +257,7 @@ class EnterpriseDataAgent:
             "order_items": f"{base_url}/order_items.csv",
             "product_catalog": f"{base_url}/product_catalog.csv"
         }
+        # ...
         for table_name, url in files_to_load.items():
             try:
                 self.con.execute(f"CREATE VIEW IF NOT EXISTS {table_name} AS SELECT * FROM '{url}'")
