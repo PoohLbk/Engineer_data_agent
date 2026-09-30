@@ -1,4 +1,0 @@
-# ตัว pipeline ใช้แค่ standard library (sqlite3, csv, unittest)
-# ต่อไปนี้ใช้เฉพาะแท็บ Pipeline Health ในแอป Streamlit
-streamlit
-pandas
