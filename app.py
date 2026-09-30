@@ -1,4 +1,5 @@
 import os
+import sys
 import sqlite3
 import time
 import duckdb
@@ -10,17 +11,23 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from google import genai
 
+# ==========================================
+# 0. นำเข้า Data Pipeline (ถ้าระบบหาไฟล์เจอ)
+# ==========================================
+try:
+    # นำเข้าฟังก์ชัน run_pipeline จาก runner.py ของคุณ
+    from data_pipeline.runner import run_pipeline
+    HAS_PIPELINE = True
+except ImportError:
+    HAS_PIPELINE = False
 
-# ------------------------------------------
-# Feedback & Rating System — เก็บ 👍/👎 ของผู้ใช้ต่อ SQL ที่ AI generate
-# ใช้ SQLite ไฟล์เดียว (feedback.db) เก็บถาวรข้าม session/restart
-# ข้อมูลนี้เอาไปต่อยอดวัด Accuracy เพิ่มเติมนอกจาก benchmark 150 ข้อเดิมได้
-# ------------------------------------------
+
+# ==========================================
+# 1. Feedback & Rating System
+# ==========================================
 FEEDBACK_DB_PATH = os.environ.get("FEEDBACK_DB_PATH", "feedback.db")
 
-
 def _get_feedback_conn():
-    """เปิด connection ใหม่ทุกครั้ง (SQLite + Streamlit multi-thread ปลอดภัยกว่าแชร์ connection เดียว)"""
     conn = sqlite3.connect(FEEDBACK_DB_PATH, check_same_thread=False)
     conn.execute(
         """
@@ -31,7 +38,7 @@ def _get_feedback_conn():
             generated_sql TEXT,
             engine TEXT NOT NULL,
             local_model TEXT,
-            rating TEXT NOT NULL,      -- 'up' หรือ 'down'
+            rating TEXT NOT NULL,
             row_count INTEGER
         )
         """
@@ -39,31 +46,19 @@ def _get_feedback_conn():
     conn.commit()
     return conn
 
-
 def save_feedback(user_query, generated_sql, engine, local_model, rating, row_count):
-    """บันทึก feedback ลง SQLite — เรียกทันทีที่ผู้ใช้กดปุ่ม 👍/👎"""
     conn = _get_feedback_conn()
     try:
         conn.execute(
             "INSERT INTO feedback (timestamp, user_query, generated_sql, engine, local_model, rating, row_count) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (
-                pd.Timestamp.now().isoformat(),
-                user_query,
-                generated_sql,
-                engine,
-                local_model,
-                rating,
-                row_count,
-            ),
+            (pd.Timestamp.now().isoformat(), user_query, generated_sql, engine, local_model, rating, row_count),
         )
         conn.commit()
     finally:
         conn.close()
 
-
 def get_feedback_stats():
-    """ดึงสถิติสรุปสำหรับแสดงในแท็บ Feedback Dashboard — แยกตาม engine/โมเดล"""
     conn = _get_feedback_conn()
     try:
         df = pd.read_sql_query("SELECT * FROM feedback ORDER BY timestamp DESC", conn)
@@ -71,11 +66,9 @@ def get_feedback_stats():
         conn.close()
     return df
 
-
-# ------------------------------------------
-# Local Engine (Ollama) — benchmark ที่วัดได้จริงบน dataset ทดสอบ 150 ข้อ
-# แสดงให้ผู้ใช้เห็นก่อนเลือก เพื่อความโปร่งใสเชิงวิจัย (ใช้ประกอบเล่ม Senior Project ได้)
-# ------------------------------------------
+# ==========================================
+# 2. Local Engine Config & Data Viz Tools
+# ==========================================
 LOCAL_MODEL_INFO = {
     "qwen2.5-coder:7b": {
         "display_name": "Qwen2.5-Coder 7B",
@@ -93,9 +86,7 @@ LOCAL_MODEL_INFO = {
     },
 }
 
-
 def _find_datetime_col(df: pd.DataFrame):
-    """หาคอลัมน์ที่เป็นวันที่/เวลา (รวมถึงลองแปลงจาก object ที่หน้าตาเหมือนวันที่)"""
     datetime_cols = df.select_dtypes(include="datetime").columns.tolist()
     if not datetime_cols:
         for col in df.select_dtypes(include="object").columns:
@@ -107,92 +98,59 @@ def _find_datetime_col(df: pd.DataFrame):
                 continue
     return datetime_cols[0] if datetime_cols else None
 
-
 def generate_charts(df: pd.DataFrame):
-    """
-    วิเคราะห์รูปร่างของผลลัพธ์ query แล้วสร้างกราฟ Plotly ที่เหมาะสมโดยอัตโนมัติ
-    คืนค่าเป็น list ของ (หัวข้อกราฟ, figure) — อาจมีมากกว่า 1 กราฟต่อผลลัพธ์
-    """
     charts = []
     if df is None or df.empty or df.shape[1] < 2:
         return charts
 
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     if not numeric_cols:
-        return charts  # ไม่มีตัวเลขให้พล็อตเลย
+        return charts 
 
     y_col = numeric_cols[0]
     date_col = _find_datetime_col(df)
     non_numeric_cols = [c for c in df.columns if c not in numeric_cols and c != date_col]
 
-    # 1) มีคอลัมน์วันที่ -> Line chart แนวโน้ม
     if date_col:
         df_sorted = df.sort_values(by=date_col)
-        fig = px.line(df_sorted, x=date_col, y=numeric_cols, markers=True,
-                        title=f"แนวโน้ม {', '.join(numeric_cols)} ตาม {date_col}")
+        fig = px.line(df_sorted, x=date_col, y=numeric_cols, markers=True, title=f"แนวโน้ม {', '.join(numeric_cols)} ตาม {date_col}")
         charts.append(("แนวโน้มตามช่วงเวลา (Trend)", fig))
 
-    # 2) มีคอลัมน์หมวดหมู่ + ตัวเลข -> Bar / Pie / Pareto
     if non_numeric_cols:
         cat_col = non_numeric_cols[0]
         grouped = df.groupby(cat_col, as_index=False)[y_col].sum().sort_values(y_col, ascending=False)
-
-        # Bar chart (top 15 อันดับ)
         bar_df = grouped.head(15)
         fig_bar = px.bar(bar_df, x=cat_col, y=y_col, title=f"{y_col} แยกตาม {cat_col} (Top {len(bar_df)})")
         fig_bar.update_layout(xaxis_tickangle=-30)
         charts.append(("เปรียบเทียบตามหมวดหมู่ (Bar)", fig_bar))
 
-        # Pie chart — เฉพาะกรณีหมวดหมู่ไม่เยอะเกินไป (สัดส่วนอ่านง่าย)
         if grouped[cat_col].nunique() <= 8:
-            fig_pie = px.pie(grouped, names=cat_col, values=y_col,
-                             title=f"สัดส่วน {y_col} ตาม {cat_col}", hole=0.35)
+            fig_pie = px.pie(grouped, names=cat_col, values=y_col, title=f"สัดส่วน {y_col} ตาม {cat_col}", hole=0.35)
             charts.append(("สัดส่วนโดยรวม (Pie)", fig_pie))
 
-        # Pareto chart (80/20) — เฉพาะกรณีมีหลายหมวดหมู่พอจะวิเคราะห์
         if grouped[cat_col].nunique() >= 3:
             pareto_df = grouped.head(15).reset_index(drop=True)
             total = pareto_df[y_col].sum()
             if total:
                 pareto_df["cum_pct"] = pareto_df[y_col].cumsum() / total * 100
                 fig_pareto = make_subplots(specs=[[{"secondary_y": True}]])
-                fig_pareto.add_trace(
-                    go.Bar(x=pareto_df[cat_col].astype(str), y=pareto_df[y_col], name=y_col),
-                    secondary_y=False,
-                )
-                fig_pareto.add_trace(
-                    go.Scatter(x=pareto_df[cat_col].astype(str), y=pareto_df["cum_pct"],
-                               name="สัดส่วนสะสม (%)", mode="lines+markers"),
-                    secondary_y=True,
-                )
-                fig_pareto.add_hline(y=80, line_dash="dot", secondary_y=True,
-                                     annotation_text="เส้น 80%")
+                fig_pareto.add_trace(go.Bar(x=pareto_df[cat_col].astype(str), y=pareto_df[y_col], name=y_col), secondary_y=False)
+                fig_pareto.add_trace(go.Scatter(x=pareto_df[cat_col].astype(str), y=pareto_df["cum_pct"], name="สัดส่วนสะสม (%)", mode="lines+markers"), secondary_y=True)
+                fig_pareto.add_hline(y=80, line_dash="dot", secondary_y=True, annotation_text="เส้น 80%")
                 fig_pareto.update_layout(title=f"Pareto Analysis: {y_col} ตาม {cat_col} (กฎ 80/20)")
                 fig_pareto.update_yaxes(title_text=y_col, secondary_y=False)
                 fig_pareto.update_yaxes(title_text="สัดส่วนสะสม (%)", range=[0, 110], secondary_y=True)
                 charts.append(("Pareto Analysis (80/20)", fig_pareto))
 
-    # 3) ไม่มีคอลัมน์หมวดหมู่/วันที่ แต่มีตัวเลขตั้งแต่ 2 คอลัมน์ -> Scatter
     if not date_col and not non_numeric_cols and len(numeric_cols) >= 2:
-        fig_scatter = px.scatter(df, x=numeric_cols[0], y=numeric_cols[1],
-                                 title=f"{numeric_cols[1]} เทียบกับ {numeric_cols[0]}")
+        fig_scatter = px.scatter(df, x=numeric_cols[0], y=numeric_cols[1], title=f"{numeric_cols[1]} เทียบกับ {numeric_cols[0]}")
         charts.append(("ความสัมพันธ์ระหว่างตัวแปร (Scatter)", fig_scatter))
 
     return charts
 
-
 def compute_statistical_insights(df: pd.DataFrame) -> str:
-    """
-    คำนวณสถิติเชิงวิเคราะห์เบื้องต้นจริงจาก DataFrame (ไม่ใช่ให้ LLM เดาตัวเลขเอง):
-    - สถิติพื้นฐาน (mean/median/std/min/max)
-    - Outlier detection ด้วยกฎ IQR
-    - Pareto (80/20): ต้องใช้กี่หมวดหมู่ถึงจะครอบคลุม 80% ของยอดรวม
-    - % การเติบโตเทียบครึ่งแรก vs ครึ่งหลังของข้อมูล (ถ้ามีคอลัมน์วันที่)
-    ผลลัพธ์เป็นข้อความสรุป ใช้เป็น "ground truth" ป้อนให้ Gemini เขียนบรรยายต่อ
-    """
     if df is None or df.empty:
         return "ไม่มีข้อมูลเพียงพอสำหรับวิเคราะห์เชิงสถิติ"
-
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     if not numeric_cols:
         return "ไม่มีคอลัมน์ตัวเลขในผลลัพธ์นี้ จึงไม่สามารถวิเคราะห์เชิงสถิติเพิ่มเติมได้"
@@ -204,23 +162,14 @@ def compute_statistical_insights(df: pd.DataFrame) -> str:
     if series.empty:
         return "ไม่มีข้อมูลตัวเลขเพียงพอสำหรับวิเคราะห์"
 
-    lines.append(
-        f"สถิติเบื้องต้นของคอลัมน์ '{main_col}': ค่าเฉลี่ย={series.mean():,.2f}, "
-        f"มัธยฐาน={series.median():,.2f}, ส่วนเบี่ยงเบนมาตรฐาน={series.std():,.2f}, "
-        f"ต่ำสุด={series.min():,.2f}, สูงสุด={series.max():,.2f} (n={len(series)})"
-    )
+    lines.append(f"สถิติเบื้องต้นของคอลัมน์ '{main_col}': ค่าเฉลี่ย={series.mean():,.2f}, มัธยฐาน={series.median():,.2f}, ส่วนเบี่ยงเบนมาตรฐาน={series.std():,.2f}, ต่ำสุด={series.min():,.2f}, สูงสุด={series.max():,.2f} (n={len(series)})")
 
-    # Outlier detection ด้วย IQR
     q1, q3 = series.quantile(0.25), series.quantile(0.75)
     iqr = q3 - q1
     lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
     outliers = series[(series < lower) | (series > upper)]
-    lines.append(
-        f"Outlier Detection (กฎ IQR) บนคอลัมน์ '{main_col}': พบ {len(outliers)} รายการ "
-        f"จากทั้งหมด {len(series)} แถว (ช่วงปกติโดยประมาณ {lower:,.2f} ถึง {upper:,.2f})"
-    )
+    lines.append(f"Outlier Detection (กฎ IQR) บนคอลัมน์ '{main_col}': พบ {len(outliers)} รายการ จากทั้งหมด {len(series)} แถว (ช่วงปกติโดยประมาณ {lower:,.2f} ถึง {upper:,.2f})")
 
-    # Pareto 80/20 (ต้องมีคอลัมน์หมวดหมู่)
     date_col_probe = _find_datetime_col(df)
     non_numeric_cols = [c for c in df.columns if c not in numeric_cols and c != date_col_probe]
     if non_numeric_cols:
@@ -232,13 +181,8 @@ def compute_statistical_insights(df: pd.DataFrame) -> str:
             n_items_80 = int((cum_pct < 80).sum()) + 1
             n_items_80 = min(n_items_80, len(grouped))
             pct_of_items = n_items_80 / len(grouped) * 100
-            lines.append(
-                f"Pareto Analysis (80/20) บน '{cat_col}': มีเพียง {n_items_80} รายการ "
-                f"(คิดเป็น {pct_of_items:.1f}% ของ {cat_col} ทั้งหมด {len(grouped)} รายการ) "
-                f"ที่รวมกันสร้าง '{main_col}' ได้ถึงประมาณ 80% ของยอดรวมทั้งหมด"
-            )
+            lines.append(f"Pareto Analysis (80/20) บน '{cat_col}': มีเพียง {n_items_80} รายการ (คิดเป็น {pct_of_items:.1f}% ของ {cat_col} ทั้งหมด {len(grouped)} รายการ) ที่รวมกันสร้าง '{main_col}' ได้ถึงประมาณ 80% ของยอดรวมทั้งหมด")
 
-    # % การเติบโต ครึ่งแรก vs ครึ่งหลัง (ถ้ามีคอลัมน์วันที่)
     if date_col_probe:
         df_sorted = df.sort_values(by=date_col_probe)
         mid = len(df_sorted) // 2
@@ -247,29 +191,18 @@ def compute_statistical_insights(df: pd.DataFrame) -> str:
             second_half = df_sorted.iloc[mid:][main_col].sum()
             if first_half != 0:
                 growth = (second_half - first_half) / abs(first_half) * 100
-                lines.append(
-                    f"อัตราการเติบโตของ '{main_col}' เมื่อเทียบครึ่งแรกกับครึ่งหลังของช่วงข้อมูล "
-                    f"(เรียงตาม '{date_col_probe}'): เปลี่ยนแปลง {growth:+.1f}%"
-                )
+                lines.append(f"อัตราการเติบโตของ '{main_col}' เมื่อเทียบครึ่งแรกกับครึ่งหลังของช่วงข้อมูล (เรียงตาม '{date_col_probe}'): เปลี่ยนแปลง {growth:+.1f}%")
 
     return "\n".join(lines)
 
 # ==========================================
-# 1. Class: EnterpriseDataAgent (Data Engine)
+# 3. Class: EnterpriseDataAgent (Data Engine)
 # ==========================================
 class OllamaConnectionError(RuntimeError):
-    """แยกออกมาเฉพาะสำหรับ error ระดับ infrastructure (เชื่อมต่อ Ollama ไม่ได้เลย)
-    เพื่อไม่ให้ self-correction loop เสีย attempt ไป retry ปัญหาที่ retry ไปก็ไม่หาย"""
     pass
-
 
 class EnterpriseDataAgent:
     def __init__(self, api_key: str = None):
-        """
-        api_key: ระบุ Gemini API Key เองได้โดยตรง (เช่น จาก UI ให้ผู้ใช้กรอกเอง)
-        ถ้าไม่ระบุ (None) จะ fallback ไปดึงจาก Streamlit Secrets หรือ Environment Variable ตามเดิม
-        """
-        # 1. ใช้ api_key ที่ส่งเข้ามาก่อน ถ้าไม่มีค่อย fallback ไป Streamlit Secrets / Environment Variable
         if not api_key:
             try:
                 if "GEMINI_API_KEY" in st.secrets:
@@ -279,26 +212,41 @@ class EnterpriseDataAgent:
             except Exception:
                 api_key = os.environ.get("GEMINI_API_KEY")
 
-        # 2. เริ่มต้นสร้าง Gemini Client
         if api_key:
             self.client = genai.Client(api_key=api_key)
         else:
             self.client = None
             print("Warning: GEMINI_API_KEY not found.")
 
-        # ตั้งค่าโมเดลหลักและโมเดลสำรองให้เป็นรุ่นที่รองรับบน API ปัจจุบัน (Cloud Engine)
         self.primary_model = "gemini-3.6-flash"
         self.fallback_model = "gemini-3.5-flash"
-
-        # ตั้งค่า Local Engine (Ollama) — รันบนเครื่อง ไม่ต้องใช้ API Key
         self.ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
-        # 3. เชื่อมต่อ DuckDB ใน Memory
-        self.con = duckdb.connect(database=':memory:')
+        # ----------------------------------------------------
+        # การเชื่อมต่อ Database (รองรับ Pipeline Integration)
+        # ----------------------------------------------------
+        # ระบุพาทไปยังไฟล์ Database ที่ Pipeline ของคุณสร้างขึ้น
+        # (คุณสามารถเปลี่ยนชื่อเป็น "warehouse.db" หรือตามที่คุณตั้งค่าใน db.py ได้)
+        db_path = "warehouse.db" 
+        
+        try:
+            if os.path.exists(db_path):
+                # ถ้ามีไฟล์จาก Pipeline ให้ต่อเข้าไฟล์นั้นแบบ read_only
+                self.con = duckdb.connect(database=db_path, read_only=True)
+                print(f"🔗 เชื่อมต่อฐานข้อมูล Local จาก Pipeline สำเร็จ ({db_path})")
+            else:
+                # ถ้ายังไม่มีไฟล์ ให้ใช้ In-Memory แล้วดึงจาก GitHub
+                self.con = duckdb.connect(database=':memory:')
+                print("⚠️ ไม่พบไฟล์ Database จาก Pipeline กำลังใช้ In-Memory และดึงข้อมูลจาก GitHub")
+                self._load_fallback_data()
+        except Exception as e:
+            print(f"Error connecting to DB: {e}. Fallback to memory.")
+            self.con = duckdb.connect(database=':memory:')
+            self._load_fallback_data()
 
-        # 4. โหลดข้อมูลแบบ VIEW (Lazy Load ช่วยให้เปิดแอปได้เร็ว)
+    def _load_fallback_data(self):
+        """โหลดข้อมูลแบบ View จาก GitHub (ทำงานต่อเมื่อ Pipeline ยังไม่รัน)"""
         base_url = "https://github.com/PoohLbk/Engineer_data_agent/releases/download/v1.0"
-
         files_to_load = {
             "customer_master": f"{base_url}/customer_master.csv",
             "dataset_statistics": f"{base_url}/dataset_statistics.csv",
@@ -306,7 +254,6 @@ class EnterpriseDataAgent:
             "order_items": f"{base_url}/order_items.csv",
             "product_catalog": f"{base_url}/product_catalog.csv"
         }
-
         for table_name, url in files_to_load.items():
             try:
                 self.con.execute(f"CREATE VIEW IF NOT EXISTS {table_name} AS SELECT * FROM '{url}'")
@@ -314,128 +261,95 @@ class EnterpriseDataAgent:
                 print(f"Error loading {table_name}: {e}")
 
     def _call_gemini_with_fallback(self, prompt):
-        """เรียกใช้งาน API หากโมเดลหลักติด Error ให้สลับไปใช้โมเดลสำรองอัตโนมัติ"""
         try:
-            response = self.client.models.generate_content(
-                model=self.primary_model,
-                contents=prompt
-            )
+            response = self.client.models.generate_content(model=self.primary_model, contents=prompt)
             return response.text
         except Exception as e:
             print(f"Primary model failed ({e}), retrying with fallback model...")
-            response = self.client.models.generate_content(
-                model=self.fallback_model,
-                contents=prompt
-            )
+            response = self.client.models.generate_content(model=self.fallback_model, contents=prompt)
             return response.text
 
     def _call_ollama(self, prompt, model_name, max_empty_retries=1, base_url=None):
-        """
-        เรียกโมเดล Local ผ่าน Ollama REST API
-        base_url: ที่อยู่ Ollama server — ถ้าไม่ระบุจะใช้ self.ollama_base_url (default: localhost)
-        องค์กรขนาดใหญ่สามารถชี้ไปที่ on-prem inference server ภายใน network ของตัวเองได้ผ่านค่านี้
-        เพื่อให้ schema/ข้อมูล/prompt ไม่ต้องออกจากเครือข่ายองค์กรเลย (Data Privacy)
-        มีการเช็ก Empty Response โดยเฉพาะ เพราะเป็นจุดอ่อนที่วัดได้จริงของโมเดล Local
-        (เช่น CodeLlama 7B พบ Empty Response ถึง 65/150 จาก benchmark) และ retry สั้น ๆ ก่อนยอมแพ้
-        """
         url = (base_url or self.ollama_base_url or "").strip().rstrip("/")
         last_err_detail = "unknown error"
+        if not url or (not url.startswith("http://") and not url.startswith("https://")):
+            raise OllamaConnectionError(f"Ollama Server URL '{url}' ไม่ถูกต้อง")
 
-        # กันเคสง่าย ๆ ที่สุด: ไม่ได้กรอก URL มาเลย หรือกรอกแค่ host ไม่มี scheme
-        if not url:
-            raise OllamaConnectionError("ยังไม่ได้ระบุ Ollama Server URL")
-        if not url.startswith("http://") and not url.startswith("https://"):
-            raise OllamaConnectionError(
-                f"Ollama Server URL '{url}' ไม่มี http:// หรือ https:// นำหน้า — "
-                "ลองแก้เป็น http://localhost:11434"
-            )
-
-        headers = {
-            "ngrok-skip-browser-warning": "true",
-            "Bypass-Tunnel-Reminder": "true",
-            "X-Pinggy-No-Screen": "true",
-        }
+        headers = {"ngrok-skip-browser-warning": "true", "Bypass-Tunnel-Reminder": "true", "X-Pinggy-No-Screen": "true"}
 
         for attempt in range(max_empty_retries + 1):
             try:
                 resp = requests.post(
-                    f"{url}/api/generate",
-                    json={"model": model_name, "prompt": prompt, "stream": False},
-                    headers=headers,
-                    timeout=120,
+                    f"{url}/api/generate", json={"model": model_name, "prompt": prompt, "stream": False},
+                    headers=headers, timeout=120,
                 )
                 resp.raise_for_status()
                 text = resp.json().get("response", "").strip()
-                if text:
-                    return text
-                last_err_detail = "Empty Response จากโมเดล Local (โมเดลตอบกลับว่างเปล่า)"
-                print(f"[Ollama] {last_err_detail} — attempt {attempt + 1}/{max_empty_retries + 1}")
+                if text: return text
+                last_err_detail = "Empty Response จากโมเดล Local"
             except requests.exceptions.ConnectionError as e:
-                # เก็บรายละเอียด exception จริงไว้ด้วย (DEBUG) แทนที่จะโยนแค่ข้อความ generic
-                # เพื่อไล่ปัญหาได้ตรงจุดกว่าเดิม เช่น "Connection refused" vs DNS fail vs อื่น ๆ
-                raise OllamaConnectionError(
-                    f"เชื่อมต่อ Ollama ไม่ได้ที่ {url} — "
-                    f"[DEBUG: {type(e).__name__}: {e}] "
-                    "ตรวจสอบว่ารัน `ollama serve` อยู่ (หรือชี้ URL ไปที่ on-prem server ของหน่วยงานให้ถูกต้อง) "
-                    f"และ pull โมเดล '{model_name}' ไว้แล้ว (`ollama pull {model_name}`)"
-                )
-            except requests.exceptions.HTTPError as e:
-                # แยก HTTP error (เช่น 404/405) ออกจาก connection error — สาเหตุคนละแบบกันเลย
-                # 404/405 มักแปลว่า "ต่อ Ollama ได้แล้ว" แต่ path/URL ที่ชี้ไปผิด (เช่นเผลอชี้ไป Streamlit เอง)
-                raise RuntimeError(
-                    f"Ollama ตอบกลับด้วย HTTP error ({resp.status_code}) ที่ {url}/api/generate — "
-                    f"[DEBUG: {e}] "
-                    "มักแปลว่า URL ที่กรอกไม่ใช่ Ollama จริง ๆ (เช่น พอร์ตของแอปอื่นที่ไม่ใช่ 11434) "
-                    "ลองเช็คว่า URL เป็น http://localhost:11434 (หรือ URL ของ on-prem server ที่ถูกต้อง)"
-                )
-            except requests.exceptions.Timeout as e:
-                raise RuntimeError(
-                    f"Ollama ที่ {url} ไม่ตอบสนองภายในเวลาที่กำหนด (timeout) — [DEBUG: {e}] "
-                    "โมเดลอาจกำลังโหลดครั้งแรกหรือเครื่องload หนักเกินไป ลองใหม่อีกครั้ง"
-                )
-            except requests.exceptions.RequestException as e:
-                raise RuntimeError(f"Ollama API error: [DEBUG: {type(e).__name__}: {e}]")
-
+                raise OllamaConnectionError(f"เชื่อมต่อ Ollama ไม่ได้: {e}")
+            except Exception as e:
+                raise RuntimeError(f"Ollama API error: {e}")
         raise RuntimeError(last_err_detail)
 
     def _call_llm(self, prompt, engine="cloud", local_model=None, ollama_url=None):
-        """
-        Dispatcher กลาง — สลับระหว่าง Cloud Engine (Gemini API) กับ Local Engine (Ollama)
-        engine: "cloud" หรือ "local"
-        local_model: ชื่อโมเดลบน Ollama เช่น "qwen2.5-coder:7b", "codellama:7b" (จำเป็นเมื่อ engine="local")
-        ollama_url: ที่อยู่ Ollama server แบบระบุเอง (สำหรับ on-prem server ขององค์กร)
-        """
         if engine == "local":
-            if not local_model:
-                raise ValueError("ต้องระบุ local_model เมื่อเลือกใช้ Local Engine")
+            if not local_model: raise ValueError("ต้องระบุ local_model เมื่อเลือกใช้ Local Engine")
             return self._call_ollama(prompt, local_model, base_url=ollama_url)
         return self._call_gemini_with_fallback(prompt)
 
+    # ----------------------------------------------------
+    # RAG Schema Router: เลือกตารางที่เกี่ยวข้องก่อนเขียน SQL
+    # ----------------------------------------------------
+    def _route_tables(self, user_query, all_table_names, engine, local_model, ollama_url):
+        prompt = f"""
+        คุณคือ Data Architect หน้าที่ของคุณคือเลือกตารางที่จำเป็นสำหรับตอบคำถาม
+        ตารางในฐานข้อมูลทั้งหมดมีดังนี้: {', '.join(all_table_names)}
+        
+        คำถามของผู้ใช้: "{user_query}"
+        
+        จงเลือกเฉพาะชื่อตารางที่เกี่ยวข้องจริงๆ ตอบมาเป็นชื่อตารางคั่นด้วยเครื่องหมายจุลภาค (comma)
+        ห้ามอธิบายเพิ่มเติม ห้ามมีเครื่องหมายคำพูด หรือ Markdown ใดๆ
+        """
+        try:
+            raw_response = self._call_llm(prompt, engine=engine, local_model=local_model, ollama_url=ollama_url)
+            selected = [t.strip() for t in raw_response.split(',')]
+            valid_selected = [t for t in selected if t in all_table_names]
+            if not valid_selected:
+                return all_table_names
+            return valid_selected
+        except Exception:
+            return all_table_names # Fallback: ถ้า Error ให้ใช้ทุกตาราง
+
     def execute_with_self_correction(self, user_query, engine="cloud", local_model=None, ollama_url=None, max_attempts=3):
         logs = [f"Received query: {user_query}", f"Engine: {engine}" + (f" ({local_model})" if local_model else "")]
-        if engine == "local":
-            logs.append(f"Ollama URL ที่ใช้จริง: {ollama_url!r}")
+        if engine == "local": logs.append(f"Ollama URL ที่ใช้จริง: {ollama_url!r}")
 
         if engine == "cloud" and not self.client:
             logs.append("Execution Error: GEMINI_API_KEY is missing.")
             return None, "", logs
-        if engine == "local" and not local_model:
-            logs.append("Execution Error: ยังไม่ได้เลือกโมเดล Local Engine")
-            return None, "", logs
 
+        # ----------------------------------------------------
+        # การใช้งาน RAG Router
+        # ----------------------------------------------------
+        tables_query = self.con.execute("SHOW TABLES").fetchall()
+        all_table_names = [t[0] for t in tables_query if t]
+        
+        # 1. AI เลือกตารางที่ต้องใช้
+        selected_tables = self._route_tables(user_query, all_table_names, engine, local_model, ollama_url)
+        logs.append(f"🔍 [RAG Router] ตารางที่ระบบเลือกใช้งาน: {', '.join(selected_tables)}")
+
+        # 2. ดึง Schema เฉพาะตารางที่เลือก
         schema_info = ""
-        tables = self.con.execute("SHOW TABLES").fetchall()
-        for t in tables:
-            if not t:
-                continue
-            t_name = t[0]
+        for t_name in selected_tables:
             try:
                 cols = self.con.execute(f"DESCRIBE {t_name}").fetchall()
+                col_str = ", ".join([f"{c[0]} ({c[1]})" for c in cols if len(c) >= 2])
+                schema_info += f"Table {t_name}: {col_str}\n"
             except Exception as e:
-                print(f"[Schema] ข้าม table '{t_name}' เพราะ DESCRIBE ล้มเหลว: {e}")
+                logs.append(f"[Schema] ข้าม table '{t_name}': {e}")
                 continue
-            col_str = ", ".join([f"{c[0]} ({c[1]})" for c in cols if len(c) >= 2])
-            schema_info += f"Table {t_name}: {col_str}\n"
 
         base_prompt = f"""
         You are a DuckDB SQL expert. Given the following schema:
@@ -455,8 +369,7 @@ class EnterpriseDataAgent:
             try:
                 raw_response = self._call_llm(prompt, engine=engine, local_model=local_model, ollama_url=ollama_url)
                 sql_query = raw_response.strip().replace("```sql", "").replace("```", "").strip()
-                if not sql_query:
-                    raise RuntimeError("โมเดลตอบกลับว่างเปล่า (Empty Response) ไม่มี SQL ให้รัน")
+                if not sql_query: raise RuntimeError("โมเดลตอบกลับว่างเปล่า (Empty Response) ไม่มี SQL ให้รัน")
                 logs.append(f"[Attempt {attempt}] Generated SQL: {sql_query}")
 
                 df_result = self.con.execute(sql_query).df()
@@ -464,17 +377,12 @@ class EnterpriseDataAgent:
                 return df_result, sql_query, logs
 
             except OllamaConnectionError as e:
-                # ปัญหาระดับ infrastructure (เชื่อมต่อ Ollama ไม่ได้เลย) — retry ไปก็ไม่มีทางหาย
-                # หยุดทันทีแทนที่จะเสีย attempt ไปวนซ้ำ error เดิม
                 last_error = str(e)
                 logs.append(f"[Attempt {attempt}] Infrastructure Error (หยุดทันที ไม่ retry): {last_error}")
                 break
-
             except Exception as e:
                 last_error = str(e)
                 logs.append(f"[Attempt {attempt}] Execution Error: {last_error}")
-
-                # ป้อน error กลับไปให้โมเดลแก้ SQL ในรอบถัดไป (Self-Correction)
                 prompt = f"""
                 {base_prompt}
 
@@ -485,23 +393,16 @@ class EnterpriseDataAgent:
                 {last_error}
 
                 กรุณาแก้ไขคำสั่ง SQL ให้ถูกต้องตาม schema ที่ให้ไว้ข้างต้น
-                (เช่น ถ้า error บอกว่าไม่มีตารางนี้ ให้ตรวจดู schema แล้วใช้ชื่อตารางที่ถูกต้องจริง ๆ)
                 Return ONLY the raw SQL query without codeblock formatting or explanations.
                 """
 
         logs.append(f"ล้มเหลวหลังจากพยายาม {attempt} ครั้ง: {last_error}")
         return None, sql_query, logs
 
-
-
     def generate_executive_summary(self, user_query, df_result, engine="cloud", local_model=None, ollama_url=None):
-        if df_result is None or df_result.empty:
-            return "ไม่พบข้อมูลสำหรับสรุปผลลัพธ์"
-
-        if engine == "cloud" and not self.client:
-            return "ไม่สามารถสรุปผลลัพธ์ได้เนื่องจากขาด GEMINI_API_KEY"
-        if engine == "local" and not local_model:
-            return "ไม่สามารถสรุปผลลัพธ์ได้เนื่องจากยังไม่ได้เลือกโมเดล Local Engine"
+        if df_result is None or df_result.empty: return "ไม่พบข้อมูลสำหรับสรุปผลลัพธ์"
+        if engine == "cloud" and not self.client: return "ไม่สามารถสรุปผลลัพธ์ได้เนื่องจากขาด GEMINI_API_KEY"
+        if engine == "local" and not local_model: return "ไม่สามารถสรุปผลลัพธ์ได้เนื่องจากยังไม่ได้เลือกโมเดล Local Engine"
 
         data_preview = df_result.head(20).to_string(index=False)
         stats_block = compute_statistical_insights(df_result)
@@ -510,322 +411,149 @@ class EnterpriseDataAgent:
         คุณเป็น Data Analyst / Data Scientist ผู้เชี่ยวชาญ กรุณาสรุปผลลัพธ์จากข้อมูลด้านล่างนี้ เพื่อตอบคำถามของผู้ใช้:
 
         คำถามของผู้ใช้: "{user_query}"
-
         ผลลัพธ์ข้อมูลที่ได้จาก Database (ตัวอย่าง 20 แถวแรก):
         {data_preview}
-
-        ผลการวิเคราะห์เชิงสถิติที่คำนวณไว้ล่วงหน้าแล้ว (เป็นตัวเลขจริงที่คำนวณจากข้อมูลทั้งหมด ไม่ใช่การประมาณ
-        ให้ใช้ตัวเลขชุดนี้อ้างอิงในการตอบ ห้ามคำนวณตัวเลขสถิติขึ้นใหม่เอง):
+        ผลการวิเคราะห์เชิงสถิติที่คำนวณไว้ล่วงหน้าแล้ว:
         {stats_block}
 
         คำแนะนำในการตอบ:
         1. อธิบายคำตอบหลักให้ชัดเจน ตรงประเด็นกับคำถามของผู้ใช้ก่อน
         2. สรุปจุดสำคัญหรือ Insight ที่น่าสนใจจากข้อมูล เป็นข้อๆ (Bullet points)
         3. อ้างอิงผลการวิเคราะห์เชิงสถิติที่ให้ไว้ข้างต้น (Outlier, Pareto 80/20, % การเติบโต ถ้ามี)
-           แล้วตีความเป็นภาษาที่ผู้บริหารเข้าใจง่าย พร้อมข้อเสนอแนะเชิงธุรกิจถ้าเป็นไปได้
         4. ตอบเป็นภาษาไทยที่สุภาพ เข้าใจง่าย และเป็นทางการ
         """
-
         try:
             summary_text = self._call_llm(prompt, engine=engine, local_model=local_model, ollama_url=ollama_url)
-            if not summary_text.strip():
-                return "โมเดล Local ตอบกลับว่างเปล่า (Empty Response) — ลองเปลี่ยนเป็น Qwen2.5-Coder หรือสลับไปใช้ Cloud Engine"
+            if not summary_text.strip(): return "โมเดล Local ตอบกลับว่างเปล่า (Empty Response)"
             return summary_text.strip()
         except Exception as e:
             return f"เกิดข้อผิดพลาดในการสร้างสรุปผลลัพธ์: {str(e)}"
 
 # ==========================================
-# 2. Streamlit Web UI Application
+# 4. Streamlit Web UI Application
 # ==========================================
 st.set_page_config(page_title="Enterprise Data Agent", layout="wide")
 
-# ------------------------------------------
-# Design tokens — "boardroom" executive theme
-# ------------------------------------------
-COLOR_BG = "#0F1620"          # deep navy-charcoal base
-COLOR_SURFACE = "#161F2E"     # card / panel surface
-COLOR_BORDER = "#28344A"      # hairline borders
-COLOR_TEXT = "#E8ECF3"        # primary text
-COLOR_TEXT_MUTED = "#8B9BB4"  # secondary text
-COLOR_ACCENT = "#C9A227"      # muted brass/gold — the one bold accent
-COLOR_ACCENT_SOFT = "#3FA796" # muted teal — secondary/positive signal
+COLOR_BG = "#0F1620"
+COLOR_SURFACE = "#161F2E"
+COLOR_BORDER = "#28344A"
+COLOR_TEXT = "#E8ECF3"
+COLOR_TEXT_MUTED = "#8B9BB4"
+COLOR_ACCENT = "#C9A227"
+COLOR_ACCENT_SOFT = "#3FA796"
 PLOTLY_COLORWAY = [COLOR_ACCENT, COLOR_ACCENT_SOFT, "#7D8FB3", "#C1584C", "#5B7FA6"]
 
 CUSTOM_CSS = f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
-
-html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
-    background-color: {COLOR_BG} !important;
-    color: {COLOR_TEXT};
-    font-family: 'IBM Plex Sans', sans-serif;
-}}
+html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{ background-color: {COLOR_BG} !important; color: {COLOR_TEXT}; font-family: 'IBM Plex Sans', sans-serif; }}
 [data-testid="stHeader"] {{ background-color: transparent !important; }}
-[data-testid="stAppViewContainer"] .main .block-container {{
-    padding-top: 2.2rem;
-    max-width: 1180px;
-}}
-
-h1, h2, h3 {{
-    font-family: 'Source Serif 4', serif !important;
-    color: {COLOR_TEXT} !important;
-    font-weight: 600 !important;
-}}
-
+[data-testid="stAppViewContainer"] .main .block-container {{ padding-top: 2.2rem; max-width: 1180px; }}
+h1, h2, h3 {{ font-family: 'Source Serif 4', serif !important; color: {COLOR_TEXT} !important; font-weight: 600 !important; }}
 .exec-header {{ margin-bottom: 1.6rem; }}
-.exec-header .eyebrow {{
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 0.82rem;
-    color: {COLOR_ACCENT_SOFT};
-    margin-bottom: 2px;
-}}
-.exec-header h1 {{
-    font-size: 2.1rem !important;
-    margin: 0 0 4px 0 !important;
-}}
-.exec-header p {{
-    color: {COLOR_TEXT_MUTED};
-    font-size: 0.95rem;
-    margin: 0;
-}}
-
-/* KPI card grid */
-.kpi-grid {{
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 14px;
-    margin: 4px 0 26px 0;
-}}
-.kpi-card {{
-    background: {COLOR_SURFACE};
-    border: 1px solid {COLOR_BORDER};
-    border-left: 3px solid {COLOR_ACCENT};
-    border-radius: 6px;
-    padding: 16px 20px;
-}}
-.kpi-card .kpi-label {{
-    font-size: 0.76rem;
-    color: {COLOR_TEXT_MUTED};
-    margin-bottom: 6px;
-}}
-.kpi-card .kpi-value {{
-    font-family: 'Source Serif 4', serif;
-    font-size: 1.75rem;
-    font-variant-numeric: tabular-nums;
-    line-height: 1.15;
-    color: {COLOR_TEXT};
-}}
-.kpi-card .kpi-sub {{
-    font-size: 0.74rem;
-    color: {COLOR_ACCENT_SOFT};
-    margin-top: 6px;
-}}
-
-/* Inputs, buttons, tabs, expanders, dataframe */
-[data-testid="stTextInput"] input {{
-    background-color: {COLOR_SURFACE} !important;
-    color: {COLOR_TEXT} !important;
-    border: 1px solid {COLOR_BORDER} !important;
-    border-radius: 6px !important;
-}}
-[data-testid="stButton"] button {{
-    background-color: {COLOR_ACCENT} !important;
-    color: #FFFFFF !important;
-    border: none !important;
-    border-radius: 6px !important;
-    font-weight: 600 !important;
-    padding: 0.5rem 1.4rem !important;
-}}
-[data-testid="stButton"] button p {{
-    color: #FFFFFF !important;
-}}
-[data-testid="stButton"] button:hover {{
-    background-color: #DDB542 !important;
-    color: #FFFFFF !important;
-}}
-[data-testid="stTabs"] button [data-testid="stMarkdownContainer"] p {{
-    font-family: 'IBM Plex Sans', sans-serif;
-    color: {COLOR_TEXT_MUTED};
-}}
-[data-testid="stTabs"] [aria-selected="true"] [data-testid="stMarkdownContainer"] p {{
-    color: {COLOR_ACCENT} !important;
-}}
-[data-testid="stExpander"] {{
-    background-color: {COLOR_SURFACE};
-    border: 1px solid {COLOR_BORDER} !important;
-    border-radius: 6px !important;
-}}
-[data-testid="stDataFrame"] {{
-    border: 1px solid {COLOR_BORDER};
-    border-radius: 6px;
-}}
-[data-testid="stAlert"] {{
-    background-color: {COLOR_SURFACE} !important;
-    border: 1px solid {COLOR_BORDER} !important;
-    color: {COLOR_TEXT} !important;
-}}
-.privacy-badge {{
-    display: inline-block;
-    font-size: 0.78rem;
-    font-family: 'IBM Plex Sans', sans-serif;
-    padding: 5px 12px;
-    border-radius: 20px;
-    margin: 6px 0 2px 0;
-}}
-.privacy-badge.local {{
-    background: rgba(63, 167, 150, 0.15);
-    color: {COLOR_ACCENT_SOFT};
-    border: 1px solid {COLOR_ACCENT_SOFT};
-}}
-.privacy-badge.cloud {{
-    background: rgba(193, 88, 76, 0.12);
-    color: #D98A80;
-    border: 1px solid #C1584C;
-}}
+.exec-header .eyebrow {{ font-family: 'IBM Plex Sans', sans-serif; font-size: 0.82rem; color: {COLOR_ACCENT_SOFT}; margin-bottom: 2px; }}
+.exec-header h1 {{ font-size: 2.1rem !important; margin: 0 0 4px 0 !important; }}
+.exec-header p {{ color: {COLOR_TEXT_MUTED}; font-size: 0.95rem; margin: 0; }}
+.kpi-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin: 4px 0 26px 0; }}
+.kpi-card {{ background: {COLOR_SURFACE}; border: 1px solid {COLOR_BORDER}; border-left: 3px solid {COLOR_ACCENT}; border-radius: 6px; padding: 16px 20px; }}
+.kpi-card .kpi-label {{ font-size: 0.76rem; color: {COLOR_TEXT_MUTED}; margin-bottom: 6px; }}
+.kpi-card .kpi-value {{ font-family: 'Source Serif 4', serif; font-size: 1.75rem; font-variant-numeric: tabular-nums; line-height: 1.15; color: {COLOR_TEXT}; }}
+.kpi-card .kpi-sub {{ font-size: 0.74rem; color: {COLOR_ACCENT_SOFT}; margin-top: 6px; }}
+[data-testid="stTextInput"] input {{ background-color: {COLOR_SURFACE} !important; color: {COLOR_TEXT} !important; border: 1px solid {COLOR_BORDER} !important; border-radius: 6px !important; }}
+[data-testid="stButton"] button {{ background-color: {COLOR_ACCENT} !important; color: #FFFFFF !important; border: none !important; border-radius: 6px !important; font-weight: 600 !important; padding: 0.5rem 1.4rem !important; }}
+[data-testid="stExpander"] {{ background-color: {COLOR_SURFACE}; border: 1px solid {COLOR_BORDER} !important; border-radius: 6px !important; }}
+[data-testid="stDataFrame"] {{ border: 1px solid {COLOR_BORDER}; border-radius: 6px; }}
+.privacy-badge {{ display: inline-block; font-size: 0.78rem; font-family: 'IBM Plex Sans', sans-serif; padding: 5px 12px; border-radius: 20px; margin: 6px 0 2px 0; }}
+.privacy-badge.local {{ background: rgba(63, 167, 150, 0.15); color: {COLOR_ACCENT_SOFT}; border: 1px solid {COLOR_ACCENT_SOFT}; }}
+.privacy-badge.cloud {{ background: rgba(193, 88, 76, 0.12); color: #D98A80; border: 1px solid #C1584C; }}
 </style>
 """
-
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-
 def format_kpi_number(x):
-    """จัดรูปแบบตัวเลขให้อ่านง่ายแบบสรุปผู้บริหาร (K/M)"""
-    if x is None:
-        return "-"
+    if x is None: return "-"
     abs_x = abs(x)
-    if abs_x >= 1_000_000:
-        return f"{x/1_000_000:,.2f}M"
-    if abs_x >= 1_000:
-        return f"{x:,.0f}"
+    if abs_x >= 1_000_000: return f"{x/1_000_000:,.2f}M"
+    if abs_x >= 1_000: return f"{x:,.0f}"
     return f"{x:,.2f}"
 
-
 def compute_kpis(df: pd.DataFrame):
-    """
-    สร้างชุด KPI จากผลลัพธ์ query:
-    - จำนวนแถว
-    - ผลรวม/ค่าเฉลี่ยของคอลัมน์ตัวเลข (สูงสุด 2 คอลัมน์แรก)
-    - จำนวนนับไม่ซ้ำ (distinct) ของคอลัมน์ที่ดูเหมือน ID เช่น customer_id, order_id ถ้ามี
-    """
     kpis = [("จำนวนแถวผลลัพธ์", f"{len(df):,}", "")]
-
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     for col in numeric_cols[:2]:
-        total = df[col].sum()
-        avg = df[col].mean()
-        kpis.append((f"รวม {col}", format_kpi_number(total), f"เฉลี่ย {format_kpi_number(avg)} / แถว"))
-
+        kpis.append((f"รวม {col}", format_kpi_number(df[col].sum()), f"เฉลี่ย {format_kpi_number(df[col].mean())} / แถว"))
     id_like_keywords = ["customer", "order", "user", "ลูกค้า"]
     for col in df.columns:
-        col_lower = col.lower()
-        if any(kw in col_lower for kw in id_like_keywords) and len(kpis) < 4:
-            distinct_count = df[col].nunique()
-            kpis.append((f"จำนวน {col} ไม่ซ้ำ", f"{distinct_count:,}", ""))
-
+        if any(kw in col.lower() for kw in id_like_keywords) and len(kpis) < 4:
+            kpis.append((f"จำนวน {col} ไม่ซ้ำ", f"{df[col].nunique():,}", ""))
     return kpis[:4]
-
 
 def render_kpi_cards(df: pd.DataFrame):
     kpis = compute_kpis(df)
-    cards_html = "".join(
-        f"""<div class="kpi-card">
-                <div class="kpi-label">{label}</div>
-                <div class="kpi-value">{value}</div>
-                <div class="kpi-sub">{sub}</div>
-            </div>"""
-        for label, value, sub in kpis
-    )
+    cards_html = "".join(f'<div class="kpi-card"><div class="kpi-label">{label}</div><div class="kpi-value">{value}</div><div class="kpi-sub">{sub}</div></div>' for label, value, sub in kpis)
     st.markdown(f'<div class="kpi-grid">{cards_html}</div>', unsafe_allow_html=True)
 
-
 def style_chart_theme(fig):
-    """ปรับโทนกราฟ Plotly ให้เข้ากับธีม Dashboard"""
-    fig.update_layout(
-        paper_bgcolor=COLOR_SURFACE,
-        plot_bgcolor=COLOR_SURFACE,
-        font=dict(family="IBM Plex Sans, sans-serif", color=COLOR_TEXT),
-        title_font=dict(family="Source Serif 4, serif", size=18, color=COLOR_TEXT),
-        colorway=PLOTLY_COLORWAY,
-        margin=dict(t=56, l=10, r=10, b=10),
-    )
+    fig.update_layout(paper_bgcolor=COLOR_SURFACE, plot_bgcolor=COLOR_SURFACE, font=dict(family="IBM Plex Sans", color=COLOR_TEXT), title_font=dict(family="Source Serif 4", size=18, color=COLOR_TEXT), colorway=PLOTLY_COLORWAY, margin=dict(t=56, l=10, r=10, b=10))
     fig.update_xaxes(gridcolor=COLOR_BORDER, zerolinecolor=COLOR_BORDER)
     fig.update_yaxes(gridcolor=COLOR_BORDER, zerolinecolor=COLOR_BORDER)
     return fig
 
-
-
-# ==========================================
-# Export Report System — รวมตาราง และ Executive Summary ออกเป็น Excel ได้ในคลิกเดียว
-# ==========================================
-
-
 def build_excel_report(user_query, df_result, summary_text, stats_text, final_sql):
-    """
-    สร้างไฟล์ Excel (.xlsx) แบบหลาย sheet:
-    - Sheet 'ข้อมูล' : ตารางผลลัพธ์ query เต็ม ๆ
-    - Sheet 'สรุปผล' : คำถาม, SQL, Executive Summary, สถิติที่คำนวณไว้
-    คืนค่าเป็น bytes พร้อมส่งเข้า st.download_button โดยตรง
-    """
     import io
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill
     from openpyxl.utils.dataframe import dataframe_to_rows
-
     wb = Workbook()
-
-    # --- Sheet 1: ข้อมูล ---
     ws_data = wb.active
     ws_data.title = "ข้อมูล"
-    for row in dataframe_to_rows(df_result, index=False, header=True):
-        ws_data.append(row)
+    for row in dataframe_to_rows(df_result, index=False, header=True): ws_data.append(row)
     header_fill = PatternFill(start_color="C9A227", end_color="C9A227", fill_type="solid")
     for cell in ws_data[1]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center")
-    for col_cells in ws_data.columns:
-        max_len = max((len(str(c.value)) for c in col_cells if c.value is not None), default=10)
-        ws_data.column_dimensions[col_cells[0].column_letter].width = min(max_len + 4, 50)
-
-    # --- Sheet 2: สรุปผล ---
+    
     ws_summary = wb.create_sheet("สรุปผล")
     ws_summary.column_dimensions["A"].width = 100
-    rows_to_write = [
-        ("คำถามของผู้ใช้", user_query),
-        ("", ""),
-        ("SQL ที่ AI สร้าง", final_sql),
-        ("", ""),
-        ("บทสรุปการวิเคราะห์ (Executive Summary)", ""),
-        (summary_text, ""),
-        ("", ""),
-        ("สถิติที่คำนวณจริง (Statistical Insights)", ""),
-        (stats_text, ""),
-    ]
+    rows_to_write = [("คำถามของผู้ใช้", user_query), ("", ""), ("SQL ที่ AI สร้าง", final_sql), ("", ""), ("บทสรุปการวิเคราะห์ (Executive Summary)", ""), (summary_text, ""), ("", ""), ("สถิติที่คำนวณจริง (Statistical Insights)", ""), (stats_text, "")]
     for label, value in rows_to_write:
-        if value:
-            ws_summary.append([f"{label}: {value}"])
-        else:
-            ws_summary.append([label])
+        ws_summary.append([f"{label}: {value}"] if value else [label])
         ws_summary.cell(row=ws_summary.max_row, column=1).alignment = Alignment(wrap_text=True, vertical="top")
-
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
-
 
 @st.cache_resource
 def load_agent(api_key: str = None):
     return EnterpriseDataAgent(api_key=api_key) if api_key else EnterpriseDataAgent()
 
-# ถ้าไม่ได้ตั้งค่า GEMINI_API_KEY ไว้ใน Streamlit Secrets/Environment Variable
-# ให้ผู้ใช้กรอกเองในหน้า UI ได้ (มีประโยชน์เวลารันทดสอบในเครื่อง หรือแชร์แอปให้คนอื่นลองโดยไม่ต้องแตะ secrets.toml)
+# ----------------------------------------------------
+# UI: Sidebar ควบคุม Data Pipeline
+# ----------------------------------------------------
+with st.sidebar:
+    st.markdown("### ⚙️ Data Engineering Ops")
+    if HAS_PIPELINE:
+        st.markdown("ระบบ Ingest ➡️ Transform ➡️ Quality")
+        if st.button("🚀 รัน ETL Pipeline", use_container_width=True):
+            with st.spinner("กำลังดึงและคลีนข้อมูล (อาจใช้เวลาสักครู่)..."):
+                try:
+                    pipeline_summary = run_pipeline()
+                    # สั่งเคลียร์ Cache เพื่อให้โหลด DB ใหม่
+                    st.cache_resource.clear()
+                    st.success("✅ อัปเดตข้อมูลและทำ Quality Check เรียบร้อย!")
+                    with st.expander("📊 ดูรายงาน Pipeline Run Log"):
+                        st.json(pipeline_summary)
+                except Exception as e:
+                    st.error(f"เกิดข้อผิดพลาดใน Pipeline: {e}")
+    else:
+        st.warning("⚠️ ไม่พบโฟลเดอร์ 'data_pipeline' ทำให้ฟีเจอร์รัน ETL ถูกปิดใช้งาน")
+
 manual_api_key = None
-try:
-    _has_secret_key = "GEMINI_API_KEY" in st.secrets
-except Exception:
-    _has_secret_key = False
+try: _has_secret_key = "GEMINI_API_KEY" in st.secrets
+except Exception: _has_secret_key = False
 if not _has_secret_key and not os.environ.get("GEMINI_API_KEY"):
-    with st.expander("🔑 ยังไม่ได้ตั้งค่า GEMINI_API_KEY — กรอกที่นี่ชั่วคราว (ไม่บันทึกถาวร)"):
+    with st.expander("🔑 ยังไม่ได้ตั้งค่า GEMINI_API_KEY — กรอกที่นี่ชั่วคราว"):
         manual_api_key = st.text_input("Gemini API Key", type="password", key="manual_api_key_input")
 
 with st.spinner("กำลังเชื่อมต่อฐานข้อมูล และสร้าง Data Engine Views..."):
@@ -842,119 +570,52 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ------------------------------------------
-# Dual Engine Selector: Cloud (Gemini API) vs Local (Ollama)
-# ------------------------------------------
 with st.container(border=True):
-    st.markdown("**⚙️ เลือก AI Engine**")
-    engine_choice = st.radio(
-        "AI Engine",
-        options=["☁️ Cloud (Gemini API)", "💻 Local (Ollama)"],
-        horizontal=True,
-        label_visibility="collapsed",
-        key="engine_choice",
-    )
+    st.markdown("**⚙️️ เลือก AI Engine**")
+    engine_choice = st.radio("AI Engine", options=["☁️ Cloud (Gemini API)", "💻 Local (Ollama)"], horizontal=True, label_visibility="collapsed")
     engine = "cloud" if engine_choice.startswith("☁️") else "local"
 
     local_model = None
     ollama_url = None
     if engine == "local":
         model_keys = list(LOCAL_MODEL_INFO.keys())
-        default_idx = model_keys.index("qwen2.5-coder:7b")
-        local_model = st.selectbox(
-            "เลือกโมเดล Local",
-            options=model_keys,
-            index=default_idx,
-            format_func=lambda m: LOCAL_MODEL_INFO[m]["display_name"]
-            + (" ⭐ แนะนำ" if LOCAL_MODEL_INFO[m]["recommended"] else ""),
-            key="local_model_choice",
-        )
+        local_model = st.selectbox("เลือกโมเดล Local", options=model_keys, index=0, format_func=lambda m: LOCAL_MODEL_INFO[m]["display_name"] + (" ⭐ แนะนำ" if LOCAL_MODEL_INFO[m]["recommended"] else ""))
         info = LOCAL_MODEL_INFO[local_model]
         st.caption(f"📊 Accuracy (benchmark 150 ข้อ): {info['accuracy_label']}")
         st.caption(f"⚠️ Empty Response: {info['empty_response_label']}")
         st.caption(f"ℹ️ {info['note']}")
-
-        # ค่า default ตั้งไว้ที่ localhost:11434 (พอร์ตของ Ollama) เสมอ
-        # หมายเหตุ: ห้ามเผลอใส่พอร์ตของแอป Streamlit เอง (มักเป็น 8501) ลงในช่องนี้
-        ollama_url = st.text_input(
-            "Ollama Server URL (on-prem ภายในองค์กร)",
-            value=agent.ollama_base_url,
-            help="ชี้ไปที่ Ollama server ภายใน network ขององค์กร (เช่น http://10.0.x.x:11434) "
-                 "หรือปล่อย localhost ไว้ถ้ารันบนเครื่องเดียวกัน (default: http://localhost:11434 "
-                 "— ไม่ใช่พอร์ตของแอป Streamlit เอง)",
-            key="ollama_url_input",
-        )
-
-        # DEBUG: โชว์ค่า URL ที่ widget เก็บไว้จริง ๆ ตอนนี้ (ช่วยจับเคส session state ค้างค่าเก่า
-        # หรือพิมพ์ผิดพลาด เช่น เผลอใส่พอร์ตของแอปเองแทนพอร์ตของ Ollama)
-        st.caption(f"🔧 DEBUG: ค่า Ollama URL ที่จะใช้จริง = {ollama_url!r}")
-
-        st.markdown(
-            '<span class="privacy-badge local">🔒 Data Privacy: schema, ผลลัพธ์ query และ prompt '
-            'จะถูกส่งไปยัง Ollama server ที่ระบุเท่านั้น — ไม่ออกนอกเครือข่ายองค์กร ไม่มีการส่งไป Google '
-            'หรือ Cloud ภายนอกใด ๆ เหมาะสำหรับข้อมูลลูกค้า/ยอดขายที่มีความอ่อนไหว</span>',
-            unsafe_allow_html=True,
-        )
+        ollama_url = st.text_input("Ollama Server URL", value=agent.ollama_base_url)
+        st.markdown('<span class="privacy-badge local">🔒 Data Privacy: schema, ผลลัพธ์ query และ prompt จะถูกส่งไปยัง Ollama server ที่ระบุเท่านั้น</span>', unsafe_allow_html=True)
     else:
         st.caption("ใช้ Gemini API ผ่าน Cloud — ต้องตั้งค่า GEMINI_API_KEY")
-        st.markdown(
-            '<span class="privacy-badge cloud">⚠️ Data Privacy: schema ตาราง และตัวอย่างผลลัพธ์ query '
-            '(สูงสุด 20 แถว) จะถูกส่งออกไปยัง Google Gemini API ซึ่งเป็น Cloud ภายนอกองค์กร '
-            'หากข้อมูลมีความอ่อนไหวสูง แนะนำสลับไปใช้ Local Engine</span>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<span class="privacy-badge cloud">⚠️ Data Privacy: schema และตัวอย่างข้อมูลจะถูกส่งไปยัง Google Cloud</span>', unsafe_allow_html=True)
 
 tab1, tab2, tab3 = st.tabs(["💬 AI Query Engine", "🔍 Data Schema Explorer", "📝 Feedback Dashboard"])
 
 with tab1:
     user_query = st.text_input("พิมพ์คำถามของคุณที่นี่ (เช่น: ขอ 5 อันดับสินค้าที่มียอดขายรวมสูงสุด):")
-
     if st.button("ประมวลผลคำสั่ง"):
         if user_query:
             with st.spinner("กำลังสร้างคำสั่ง SQL และดึงข้อมูล..."):
-                df_result, final_sql, logs = agent.execute_with_self_correction(
-                    user_query, engine=engine, local_model=local_model, ollama_url=ollama_url
-                )
-
+                df_result, final_sql, logs = agent.execute_with_self_correction(user_query, engine=engine, local_model=local_model, ollama_url=ollama_url)
             summary = ""
             if df_result is not None and not df_result.empty:
                 with st.spinner("กำลังวิเคราะห์และสรุป Insight..."):
-                    summary = agent.generate_executive_summary(
-                        user_query, df_result, engine=engine, local_model=local_model, ollama_url=ollama_url
-                    )
-
-            # เก็บผลลัพธ์ทั้งหมดไว้ใน session_state — จำเป็นเพราะปุ่ม Feedback/Export
-            # จะทำให้ Streamlit rerun สคริปต์ใหม่ทุกครั้งที่กด ถ้าไม่เก็บไว้ผลลัพธ์จะหายไปทันที
+                    summary = agent.generate_executive_summary(user_query, df_result, engine=engine, local_model=local_model, ollama_url=ollama_url)
+            
             st.session_state["last_result"] = {
-                "user_query": user_query,
-                "df_result": df_result,
-                "final_sql": final_sql,
-                "logs": logs,
-                "summary": summary,
-                "engine": engine,
-                "local_model": local_model,
+                "user_query": user_query, "df_result": df_result, "final_sql": final_sql,
+                "logs": logs, "summary": summary, "engine": engine, "local_model": local_model,
             }
 
-    # --------------------------------------------------
-    # แสดงผลลัพธ์จาก session_state เสมอ (ไม่ใช่แค่ตอนกดปุ่มประมวลผลรอบล่าสุด)
-    # เพื่อให้ผลลัพธ์ไม่หายไปตอนกดปุ่ม Feedback หรือ Export ที่ทำให้หน้าต้อง rerun
-    # --------------------------------------------------
     result = st.session_state.get("last_result")
     if result:
-        user_query = result["user_query"]
-        df_result = result["df_result"]
-        final_sql = result["final_sql"]
-        logs = result["logs"]
-        summary = result["summary"]
-        engine = result["engine"]
-        local_model = result["local_model"]
+        user_query, df_result, final_sql, logs, summary, engine, local_model = result["user_query"], result["df_result"], result["final_sql"], result["logs"], result["summary"], result["engine"], result["local_model"]
 
         if df_result is not None and not df_result.empty:
             render_kpi_cards(df_result)
-
             st.subheader("💡 บทสรุปการวิเคราะห์ (Executive Summary)")
             st.write(summary)
-
             st.subheader("📊 ผลลัพธ์ตารางข้อมูล (Query Results)")
             st.dataframe(df_result, use_container_width=True)
 
@@ -963,26 +624,16 @@ with tab1:
                 st.subheader("📈 การวิเคราะห์เชิงภาพ (Visual Analytics)")
                 chart_tabs = st.tabs([title for title, _ in charts])
                 for tab, (title, fig) in zip(chart_tabs, charts):
-                    with tab:
-                        st.plotly_chart(style_chart_theme(fig), use_container_width=True)
+                    with tab: st.plotly_chart(style_chart_theme(fig), use_container_width=True)
 
             stats_text = compute_statistical_insights(df_result)
             with st.expander("🧮 ตัวเลขสถิติที่คำนวณจริง (Statistical Insights — raw numbers)"):
                 st.text(stats_text)
 
-            # --------------------------------------------------
-            # Export Report — รวมตาราง, Executive Summary เป็น Excel ในคลิกเดียว
-            # --------------------------------------------------
             st.markdown("**📥 Export รายงานสรุป**")
             try:
                 excel_bytes = build_excel_report(user_query, df_result, summary, stats_text, final_sql)
-                st.download_button(
-                    "📊 ดาวน์โหลด Excel",
-                    data=excel_bytes,
-                    file_name="enterprise_data_agent_report.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="export_excel_btn",
-                )
+                st.download_button("📊 ดาวน์โหลด Excel", data=excel_bytes, file_name="enterprise_data_agent_report.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             except Exception as e:
                 st.error(f"สร้างไฟล์ Excel ไม่สำเร็จ: {e}")
         else:
@@ -990,128 +641,70 @@ with tab1:
 
         with st.expander("🔍 Audit Logs & Generated SQL Pipeline (สำหรับงานเทคนิค)"):
             st.code(final_sql, language="sql")
-            for log in logs:
-                st.write(log)
+            for log in logs: st.write(log)
 
-        # --------------------------------------------------
-        # Feedback & Rating — ให้ผู้ใช้ประเมิน SQL ที่ AI generate ว่าถูกต้องไหม
-        # เก็บทุกครั้งที่กด ไม่ว่าผลลัพธ์จะว่างหรือมีข้อมูล (เพื่อวัด accuracy ครบทุกกรณี)
-        # --------------------------------------------------
         st.markdown("**SQL ที่ AI สร้างถูกต้องไหม?**")
-        fb_col1, fb_col2, fb_col_spacer = st.columns([1, 1, 6])
+        fb_col1, fb_col2, _ = st.columns([1, 1, 6])
         row_count_for_feedback = int(len(df_result)) if df_result is not None else 0
-
         with fb_col1:
-            if st.button("👍 ถูกต้อง", key=f"fb_up_{len(logs)}_{user_query}"):
-                save_feedback(
-                    user_query=user_query,
-                    generated_sql=final_sql,
-                    engine=engine,
-                    local_model=local_model,
-                    rating="up",
-                    row_count=row_count_for_feedback,
-                )
+            if st.button("👍 ถูกต้อง"):
+                save_feedback(user_query, final_sql, engine, local_model, "up", row_count_for_feedback)
                 st.toast("บันทึก Feedback 👍 แล้ว ขอบคุณครับ", icon="✅")
         with fb_col2:
-            if st.button("👎 ไม่ถูกต้อง", key=f"fb_down_{len(logs)}_{user_query}"):
-                save_feedback(
-                    user_query=user_query,
-                    generated_sql=final_sql,
-                    engine=engine,
-                    local_model=local_model,
-                    rating="down",
-                    row_count=row_count_for_feedback,
-                )
+            if st.button("👎 ไม่ถูกต้อง"):
+                save_feedback(user_query, final_sql, engine, local_model, "down", row_count_for_feedback)
                 st.toast("บันทึก Feedback 👎 แล้ว ขอบคุณครับ", icon="📝")
 
 with tab2:
     st.subheader("📋 Schema และตัวอย่างข้อมูลของฐานข้อมูลทั้งหมด")
     search_term = st.text_input("🔍 ค้นหาชื่อตาราง หรือ ชื่อคอลัมน์:")
-
     tables = agent.con.execute("SHOW TABLES").fetchall()
     for t in tables:
-        if not t:
-            continue
+        if not t: continue
         t_name = t[0]
         try:
             cols = agent.con.execute(f"DESCRIBE {t_name}").fetchall()
         except Exception as e:
-            st.warning(f"⚠️ ข้าม table '{t_name}' เพราะโหลด schema ไม่ได้: {e}")
             continue
-
         col_names = [c[0] for c in cols if len(c) >= 1]
         if search_term.lower() in t_name.lower() or any(search_term.lower() in c.lower() for c in col_names):
             with st.expander(f"📌 Table: {t_name}", expanded=False):
                 st.markdown("**📌 Data Types & Schema:**")
-                st.dataframe(
-                    [{"Column Name": c[0], "Data Type": c[1]} for c in cols if len(c) >= 2],
-                    use_container_width=True
-                )
-
+                st.dataframe([{"Column Name": c[0], "Data Type": c[1]} for c in cols if len(c) >= 2], use_container_width=True)
                 st.markdown("**👀 Sample Data (Top 3 rows):**")
                 try:
                     sample_df = agent.con.execute(f"SELECT * FROM {t_name} LIMIT 3").df()
                     st.dataframe(sample_df, use_container_width=True)
-                except Exception as e:
-                    st.error(f"ไม่สามารถโหลดตัวอย่างข้อมูลได้: {e}")
+                except Exception:
+                    pass
 
 with tab3:
     st.subheader("📝 สรุปผล Feedback จากผู้ใช้งานจริง")
-    st.caption("ข้อมูลนี้เก็บสะสมทุกครั้งที่มีคนกด 👍/👎 ใต้ SQL ที่ AI สร้าง — ใช้ประกอบวัด Accuracy เพิ่มเติมจาก benchmark 150 ข้อได้")
-
     feedback_df = get_feedback_stats()
-
     if feedback_df.empty:
-        st.info("ยังไม่มี Feedback เข้ามา — ลองไปกดปุ่ม 👍/👎 ที่แท็บ 'AI Query Engine' หลังรันคำถามดูก่อน")
+        st.info("ยังไม่มี Feedback เข้ามา")
     else:
         total_fb = len(feedback_df)
         up_count = int((feedback_df["rating"] == "up").sum())
         down_count = int((feedback_df["rating"] == "down").sum())
         accuracy_pct = (up_count / total_fb * 100) if total_fb else 0
-
         kpi_c1, kpi_c2, kpi_c3, kpi_c4 = st.columns(4)
         kpi_c1.metric("Feedback ทั้งหมด", f"{total_fb:,}")
         kpi_c2.metric("👍 ถูกต้อง", f"{up_count:,}")
         kpi_c3.metric("👎 ไม่ถูกต้อง", f"{down_count:,}")
         kpi_c4.metric("Accuracy จาก Feedback", f"{accuracy_pct:.1f}%")
-
         st.markdown("---")
-
-        # สรุปแยกตาม Engine / โมเดล — เทียบกับ benchmark เดิม (19.33% / 22.00%) ได้เลย
-        st.markdown("**📊 สรุปแยกตาม Engine / โมเดล**")
         breakdown = (
-            feedback_df.assign(
-                engine_label=feedback_df.apply(
-                    lambda r: f"{r['engine']} ({r['local_model']})" if r["engine"] == "local" and r["local_model"]
-                    else r["engine"],
-                    axis=1,
-                )
-            )
-            .groupby("engine_label")["rating"]
-            .value_counts()
-            .unstack(fill_value=0)
+            feedback_df.assign(engine_label=feedback_df.apply(lambda r: f"{r['engine']} ({r['local_model']})" if r["engine"] == "local" and r["local_model"] else r["engine"], axis=1))
+            .groupby("engine_label")["rating"].value_counts().unstack(fill_value=0)
         )
-        if "up" not in breakdown.columns:
-            breakdown["up"] = 0
-        if "down" not in breakdown.columns:
-            breakdown["down"] = 0
+        if "up" not in breakdown.columns: breakdown["up"] = 0
+        if "down" not in breakdown.columns: breakdown["down"] = 0
         breakdown["total"] = breakdown["up"] + breakdown["down"]
         breakdown["accuracy_%"] = (breakdown["up"] / breakdown["total"] * 100).round(1)
         st.dataframe(breakdown, use_container_width=True)
-
         st.markdown("---")
-        st.markdown("**🕒 ประวัติ Feedback ล่าสุด**")
         display_df = feedback_df.copy()
         display_df["rating"] = display_df["rating"].map({"up": "👍 ถูกต้อง", "down": "👎 ไม่ถูกต้อง"})
-        st.dataframe(
-            display_df[["timestamp", "user_query", "generated_sql", "engine", "local_model", "rating", "row_count"]],
-            use_container_width=True,
-        )
-
-        csv_bytes = feedback_df.to_csv(index=False).encode("utf-8-sig")
-        st.download_button(
-            "📥 ดาวน์โหลด Feedback ทั้งหมดเป็น CSV",
-            data=csv_bytes,
-            file_name="feedback_export.csv",
-            mime="text/csv",
-        )
+        st.dataframe(display_df[["timestamp", "user_query", "generated_sql", "engine", "local_model", "rating", "row_count"]], use_container_width=True)
+        st.download_button("📥 ดาวน์โหลด Feedback ทั้งหมดเป็น CSV", data=feedback_df.to_csv(index=False).encode("utf-8-sig"), file_name="feedback_export.csv", mime="text/csv")
